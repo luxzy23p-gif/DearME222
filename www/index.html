@@ -3,41 +3,113 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="theme-color" content="#2a2850">
+<meta name="theme-color" content="#f6f1e1">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DearMe</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div id="bgfx" aria-hidden="true"></div>
 <div id="app">
-  <header>
-    <div class="av" id="av">T</div>
-    <div class="who"><b id="nm">DearMe</b><small id="st">Teman AI · bukan manusia</small></div>
-    <button class="ic" id="vbtn" title="Balasan suara" aria-label="Balasan suara" aria-pressed="false">🔈</button>
-    <button class="ic" id="mbtn" title="Menu" aria-label="Menu">⋯</button>
-  </header>
-  <div id="menu" hidden><button id="chg">Ganti teman ngobrol</button><button id="clr">Hapus semua riwayat</button></div>
-  <main id="log" aria-live="polite"></main>
-  <div id="emo" hidden></div>
-  <footer>
-    <button class="ic" id="ebtn" aria-label="Emoji">😊</button>
-    <textarea id="inp" rows="1" placeholder="Tulis pesan…" aria-label="Tulis pesan"></textarea>
-    <button class="ic" id="mic" aria-label="Rekam pesan suara">🎤</button>
-    <button id="send" aria-label="Kirim">➤</button>
-  </footer>
+
+  <!-- DAFTAR CHAT -->
+  <section id="v-list" class="view">
+    <header class="bar">
+      <span class="sp"></span>
+      <h1>Chat</h1>
+      <button class="ic" id="srch" aria-label="Cari"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
+    </header>
+    <div id="sbox" hidden><input id="q" placeholder="Cari teman atau pesan…" aria-label="Cari" autocomplete="off"></div>
+    <div class="scroll">
+      <h2>Semua teman</h2>
+      <div id="avrow" class="avrow"></div>
+      <div class="tabs" id="tabs" role="tablist"></div>
+      <div id="chats" class="chatlist"></div>
+      <p class="foot">DearMe adalah AI, bukan manusia. Riwayat chat hanya ada di perangkat ini.</p>
+    </div>
+  </section>
+
+  <!-- CHAT -->
+  <section id="v-chat" class="view" hidden>
+    <header class="bar chat">
+      <button class="ic" id="back" aria-label="Kembali"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <div class="av" id="av">N</div>
+      <div class="who"><b id="nm">Nara</b><small id="st">Online</small></div>
+      <button class="ic" id="vbtn" aria-label="Balasan voice note" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg></button>
+      <button class="ic" id="mbtn" aria-label="Menu"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></button>
+    </header>
+    <div id="menu" hidden>
+      <button id="m-style">Gaya chat dan suara</button>
+      <button id="m-fav">Tandai favorit</button>
+      <button id="m-clear">Hapus chat ini</button>
+    </div>
+    <main id="log" aria-live="polite"></main>
+    <div id="emo" hidden></div>
+    <footer id="bar">
+      <button class="ic" id="ebtn" aria-label="Emoji"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c1 1.4 2.2 2 3.5 2s2.5-.6 3.5-2"/><circle cx="9" cy="10" r=".6"/><circle cx="15" cy="10" r=".6"/></svg></button>
+      <textarea id="inp" rows="1" placeholder="Tulis pesan…" aria-label="Tulis pesan"></textarea>
+      <button class="ic mic" id="mic" aria-label="Rekam pesan suara"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+      <button id="send" aria-label="Kirim"><svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-3-7z"/></svg></button>
+    </footer>
+    <div id="rec" hidden>
+      <button class="ic" id="rec-del" aria-label="Batalkan"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg></button>
+      <div class="wave" id="wave"></div>
+      <span id="rec-t">0:00</span>
+      <button id="rec-send" aria-label="Kirim suara"><svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-3-7z"/></svg></button>
+    </div>
+  </section>
+
+  <!-- TEMA -->
+  <section id="v-theme" class="view" hidden>
+    <header class="bar"><span class="sp"></span><h1>Tema</h1><span class="sp"></span></header>
+    <div class="scroll">
+      <p class="hint">Pilih tampilan yang paling nyaman buat matamu.</p>
+      <div id="themes" class="themes"></div>
+    </div>
+  </section>
+
+  <!-- PENGATURAN -->
+  <section id="v-set" class="view" hidden>
+    <header class="bar"><span class="sp"></span><h1>Pengaturan</h1><span class="sp"></span></header>
+    <div class="scroll">
+      <label for="nick">Nama panggilan</label>
+      <input id="nick" maxlength="30" autocomplete="off" placeholder="Boleh dikosongkan">
+      <label>Gaya chat bawaan tiap teman</label>
+      <div id="setstyles"></div>
+      <label>Data</label>
+      <button class="danger" id="clr">Hapus semua riwayat</button>
+      <p class="foot">DearMe adalah AI pendengar, bukan manusia dan bukan pengganti psikolog atau orang terdekatmu. Kalau kamu merasa tidak aman, hubungi orang yang kamu percaya, layanan 119 ekstensi 8, atau 112 jika darurat.</p>
+    </div>
+  </section>
+
+  <nav id="nav">
+    <button data-v="list" aria-label="Chat"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><span>Chat</span></button>
+    <button data-v="theme" aria-label="Tema"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.3 0 2-.8 2-1.7 0-1.2-1-1.5-1-2.6 0-.9.7-1.7 1.8-1.7H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="8" cy="11" r=".8"/><circle cx="12" cy="7.5" r=".8"/><circle cx="16" cy="10" r=".8"/></svg><span>Tema</span></button>
+    <button data-v="set" aria-label="Pengaturan"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg><span>Setelan</span></button>
+  </nav>
+
+  <div id="sheet" hidden>
+    <div class="sheet-bg" id="sheet-bg"></div>
+    <div class="sheet-box">
+      <h3>Gaya chat dan suara</h3>
+      <p class="hint" id="sheet-for"></p>
+      <div id="sheet-chips" class="chips"></div>
+      <p class="hint" id="sheet-desc"></p>
+      <button id="sheet-try">Dengarkan contoh suara</button>
+      <button class="ghost" id="sheet-close">Selesai</button>
+    </div>
+  </div>
 </div>
 
 <section id="setup" hidden>
   <div class="box">
-    <h1>Mau cerita apa hari ini?</h1>
+    <h1>Halo, selamat datang</h1>
     <p>DearMe adalah AI pendengar. Dia bukan manusia dan bukan pengganti psikolog atau orang terdekatmu. Riwayat chat hanya tersimpan di perangkat ini.</p>
-    <label>Aku seorang…</label>
+    <label for="nick2">Nama panggilan (boleh dikosongkan)</label>
+    <input id="nick2" maxlength="30" autocomplete="off">
+    <label>Aku seorang… (hanya untuk saran teman ngobrol)</label>
     <div class="row" id="gen"></div>
-    <label>Ngobrol dengan</label>
-    <div class="row" id="pers"></div>
-    <label for="nick">Nama panggilan (boleh dikosongkan)</label>
-    <input id="nick" maxlength="30" autocomplete="off">
-    <button id="go" disabled>Mulai ngobrol</button>
+    <button id="go">Mulai</button>
   </div>
 </section>
 

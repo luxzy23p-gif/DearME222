@@ -40,7 +40,8 @@ function validate(body) {
   msgs = msgs.slice(-20);
   while (msgs.length && msgs[0].role !== 'user') msgs.shift();
   if (!msgs.length || msgs[msgs.length - 1].role !== 'user') return { error: 'Pesan terakhir harus dari pengguna.' };
-  return { persona: body.persona, nick, messages: msgs };
+  const style = typeof body.style === 'string' && Object.prototype.hasOwnProperty.call(TC.STYLES, body.style) ? body.style : '';
+  return { persona: body.persona, nick, style, messages: msgs };
 }
 
 function upstreamError(status, body) {
@@ -197,7 +198,7 @@ function createServer(cfg, deps = {}) {
       const key = cfg.provider === 'openai' ? cfg.openaiKey : cfg.geminiKey;
       if (!key) return send(503, { error: 'Server belum dikonfigurasi.' });
       const crisis = TC.detectCrisis(v.messages[v.messages.length - 1].text);
-      const system = TC.buildSystemPrompt(v.persona, { nick: v.nick, crisis });
+      const system = TC.buildSystemPrompt(v.persona, { nick: v.nick, crisis, style: v.style });
       const ctl = new AbortController();
       const to = setTimeout(() => ctl.abort(), 26000);
       try {

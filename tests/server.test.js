@@ -153,3 +153,14 @@ test('model utama lambat (timeout) -> pindah ke cadangan, tidak menghabiskan sem
   const r = await post(b.url, good); const j = await r.json();
   assert.equal(r.status, 200); assert.match(j.text, /dengerin/); assert.equal(urls.length, 2); b.close();
 });
+
+test('style: gaya sah diteruskan ke prompt, gaya palsu diabaikan', async () => {
+  const seen = [];
+  const f = async (u, o) => { seen.push(JSON.parse(o.body).systemInstruction.parts[0].text); return okFetch(); };
+  const b = await boot(cfg(), f);
+  assert.equal((await post(b.url, { ...good, style: 'ceria' })).status, 200);
+  assert.match(seen[0], /Gaya ceria/);
+  assert.equal((await post(b.url, { ...good, style: 'constructor' })).status, 200);
+  assert.ok(!/Gaya ceria/.test(seen[1])); assert.match(seen[1], /Gaya lembut dan feminin/); // bawaan Nara
+  assert.equal((await post(b.url, { ...good, style: 123 })).status, 200); b.close();
+});
