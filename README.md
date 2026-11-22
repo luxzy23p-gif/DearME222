@@ -60,3 +60,10 @@ Ubah kode lalu push ke `main`. Build baru menaikkan `versionCode` otomatis dan m
 - Aplikasi ini bukan layanan kesehatan mental dan tidak boleh dipromosikan sebagai pengganti psikolog.
 
 Lihat `AUDIT.md` untuk daftar bug yang diperbaiki dan hasil pengujian.
+
+## Suara AI (voice note)
+
+Balasan voice note dibuat server lewat Gemini TTS (kunci `GEMINI_API_KEY` yang sama) di `POST /api/tts`
+(`{persona, style, text}` -> `audio/wav`). Suara dipilih menurut persona dan gaya chat. Kalau gagal, aplikasi
+otomatis memakai suara bawaan HP. Diagnosis: buka `/health?tts=1` (hanya status model, tanpa kunci).
+Daftar model bisa diganti lewat `TTS_MODELS`.

@@ -5,7 +5,9 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* penyimpanan penuh atau dimatikan */ } },
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* abaikan */ } }
 };
-const API = ((window.DEARME_CONFIG && window.DEARME_CONFIG.API_BASE) || '').replace(/\/+$/, '') + '/api/chat';
+const BASE = ((window.DEARME_CONFIG && window.DEARME_CONFIG.API_BASE) || '').replace(/\/+$/, '');
+const API = BASE + '/api/chat';
+const TTS_API = BASE + '/api/tts';
 const has = (o, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k);
 const IDS = Object.keys(TC.PERSONAS);
 const THEMES = [
@@ -136,10 +138,21 @@ $('#q').addEventListener('input', () => { query = $('#q').value; renderList(); }
 
 /* ---------- suara balasan (voice note) ---------- */
 let playing = null;
-function stopSpeak() { if ('speechSynthesis' in window) speechSynthesis.cancel(); if (playing) { playing.classList.remove('playing'); playing = null; } }
-function speak(text, id, onend) {
+let audioEl = null, ttsCtl = null, playToken = 0;
+const ttsCache = new Map(); // kunci -> Blob suara; menyimpan beberapa suara terakhir supaya putar ulang cepat
+function stopSpeak() {
+  playToken++;
+  if (ttsCtl) { try { ttsCtl.abort(); } catch (e) { /* abaikan */ } ttsCtl = null; }
+  if (audioEl) { try { audioEl.pause(); } catch (e) { /* abaikan */ } audioEl = null; }
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  if (playing) { playing.classList.remove('playing', 'loading'); playing = null; }
+}
+function cleanForSpeech(text) { return text.replace(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/gu, '').trim(); }
+
+// Suara bawaan HP (cadangan kalau suara AI gagal atau tidak ada koneksi)
+function speakDevice(text, id, onend) {
   if (!('speechSynthesis' in window)) { if (onend) onend(); return; }
-  const clean = text.replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, '').trim();
+  const clean = cleanForSpeech(text);
   if (!clean) { if (onend) onend(); return; }
   const tts = TC.styleOf(id, chat(id).style).tts;
   const u = new SpeechSynthesisUtterance(clean);
@@ -152,6 +165,49 @@ function speak(text, id, onend) {
   u.pitch = Math.max(0, Math.min(2, tts.pitch * adj)); u.rate = tts.rate; u.volume = tts.volume;
   u.onend = u.onerror = () => { if (onend) onend(); };
   speechSynthesis.speak(u);
+}
+
+// Suara AI yang natural (dibuat di server). Kalau gagal, otomatis pakai suara bawaan HP.
+// row (opsional) = baris voice note yang diberi tanda "memuat" selama suara dibuat.
+async function speak(text, id, onend, row) {
+  const clean = cleanForSpeech(text);
+  if (!clean) { if (onend) onend(); return; }
+  const style = chat(id).style || '';
+  const key = id + '|' + style + '|' + clean;
+  const token = ++playToken;
+  let finished = false;
+  const done = () => { if (finished) return; finished = true; if (onend) onend(); };
+  const fallback = () => { if (token === playToken) speakDevice(clean, id, done); else done(); };
+  try {
+    let blob = ttsCache.get(key);
+    if (!blob) {
+      if (row) row.classList.add('loading');
+      ttsCtl = new AbortController();
+      const to = setTimeout(() => { if (ttsCtl) ttsCtl.abort(); }, 28000);
+      let r;
+      try {
+        r = await fetch(TTS_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ persona: id, style, text: clean.slice(0, 600) }), signal: ttsCtl.signal });
+      } finally { clearTimeout(to); }
+      if (!r.ok) throw new Error('tts ' + r.status);
+      blob = await r.blob();
+      if (!blob.size) throw new Error('kosong');
+      ttsCache.set(key, blob);
+      if (ttsCache.size > 12) ttsCache.delete(ttsCache.keys().next().value);
+    }
+    if (row) row.classList.remove('loading');
+    if (token !== playToken) { done(); return; } // dihentikan atau diganti saat memuat
+    const url = URL.createObjectURL(blob);
+    const a = new Audio(url);
+    audioEl = a;
+    const end = () => { URL.revokeObjectURL(url); if (audioEl === a) audioEl = null; done(); };
+    a.onended = end;
+    a.onerror = () => { URL.revokeObjectURL(url); if (audioEl === a) audioEl = null; fallback(); };
+    await a.play();
+  } catch (e) {
+    if (row) row.classList.remove('loading');
+    if (token !== playToken) { done(); return; }
+    fallback();
+  }
 }
 function waveBars(text, n) {
   let h = 7; for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) >>> 0;
@@ -172,7 +228,7 @@ function vnBubble(m, id) {
   pl.onclick = () => {
     if (playing === row) { stopSpeak(); return; }
     stopSpeak(); playing = row; row.classList.add('playing');
-    speak(m.text, id, () => { if (playing === row) { row.classList.remove('playing'); playing = null; } });
+    speak(m.text, id, () => { if (playing === row) { row.classList.remove('playing', 'loading'); playing = null; } }, row);
   };
   d.append(row, tx, tick(m, false)); d.vnRow = row;
   return d;
@@ -315,7 +371,7 @@ async function doReply() {
       }
       const am = { role: 'ai', text: parts[i], t: Date.now() };
       c.msgs.push(am);
-      if (here()) { addBubble(am, id); markRead(); if (c.voice) { const row = log.lastChild && log.lastChild.vnRow; if (row) { stopSpeak(); playing = row; row.classList.add('playing'); speak(am.text, id, () => { if (playing === row) { row.classList.remove('playing'); playing = null; } }); } } }
+      if (here()) { addBubble(am, id); markRead(); if (c.voice) { const row = log.lastChild && log.lastChild.vnRow; if (row) { stopSpeak(); playing = row; row.classList.add('playing'); speak(am.text, id, () => { if (playing === row) { row.classList.remove('playing', 'loading'); playing = null; } }, row); } } }
       else c.unread++;
       save();
     }

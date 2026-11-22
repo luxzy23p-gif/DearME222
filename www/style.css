@@ -113,6 +113,9 @@ main{flex:1;min-height:0;overflow-y:auto;padding:10px 12px;display:flex;flex-dir
 .vn.playing .bars i{opacity:.9;animation:wv .8s ease-in-out infinite alternate}
 .vn.playing .bars i:nth-child(odd){animation-delay:.25s}
 @keyframes wv{from{transform:scaleY(.55)}to{transform:scaleY(1.15)}}
+.vn.loading .bars i{animation:none;opacity:.35}
+.vn.loading .pl{animation:ldp 1s ease-in-out infinite alternate}
+@keyframes ldp{from{opacity:.5}to{opacity:1}}
 .vn .dur{font-size:.75rem;opacity:.75}
 .vn .tg{background:none;border:0;opacity:.7;font-size:.75rem;text-decoration:underline}
 .tx{margin-top:6px;font-size:.92rem}
