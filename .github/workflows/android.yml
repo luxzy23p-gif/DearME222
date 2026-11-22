@@ -53,6 +53,7 @@ jobs:
         run: |
           [ -d android ] || npx cap add android
           node scripts/configure-android.mjs
+          node scripts/apply-icon.mjs
           npx cap sync android
 
       - name: Pakai kunci debug tetap (agar APK baru bisa menimpa yang lama)
