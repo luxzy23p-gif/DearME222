@@ -61,7 +61,7 @@ async function callGeminiModel(cfg, model, f, system, msgs, signal) {
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: msgs.map((m) => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] })),
-      generationConfig: { temperature: 0.9, maxOutputTokens: 400 }
+      generationConfig: { temperature: 1, maxOutputTokens: 400 }
     })
   });
   if (!r.ok) throw upstreamError(r.status, await r.json().catch(() => ({})));

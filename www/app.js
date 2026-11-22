@@ -360,7 +360,8 @@ async function doReply() {
     const raw = await askAI(id, ctl);
     if (my !== token) return;
     inflight = null; if (typEl) { typEl.remove(); typEl = null; }
-    const parts = String(raw).split('|||').map((s) => s.trim()).filter(Boolean).slice(0, 3);
+    let parts = String(raw).split('|||').map((s) => s.trim()).filter(Boolean).slice(0, 3);
+    if (c.voice && parts.length > 1) parts = [parts.join(' ')]; // mode voice note: satu rekaman utuh, bukan saling memotong
     if (!parts.length) throw new Error('server');
     for (let i = 0; i < parts.length; i++) {
       if (i > 0) {

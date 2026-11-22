@@ -58,3 +58,9 @@ test('prompt: pesan beruntun dibaca sebagai satu cerita; aturan keselamatan teta
     assert.match(p, /Jangan berperan sebagai pacar/);
   }
 });
+
+test('prompt: gaya bicara manusiawi, tapi aturan kejujuran AI tetap ada', () => {
+  const p = TC.buildSystemPrompt('nara', { style: 'lembut' });
+  assert.match(p, /BERBICARA SEPERTI MANUSIA/); assert.match(p, /Aku mengerti perasaanmu/); assert.match(p, /jawab jujur/);
+  assert.match(p, /Kamu AI, bukan manusia/); assert.match(p, /Jangan berperan sebagai pacar/);
+});
