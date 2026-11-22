@@ -48,7 +48,7 @@ Satu kali di repo GitHub:
 Build gagal dengan pesan jelas bila: lockfile belum ada, `DEARME_API_BASE` kosong/bukan HTTPS/berisi localhost, tes gagal, atau Gradle error (lihat log langkah terkait).
 
 ### Mengunduh dan memasang APK
-Buka run yang berhasil → bagian **Artifacts** → unduh `DearMe-debug-apk` → ekstrak zip → buka `app-debug.apk` di HP Android (izinkan "pasang dari sumber ini" bila diminta).
+Buka run yang berhasil → bagian **Artifacts** → unduh `DearMe-APK` → ekstrak zip → buka `DearMe.apk` di HP Android (izinkan "pasang dari sumber ini" bila diminta).
 
 ### Memperbarui aplikasi
 Ubah kode lalu push ke `main`. Build baru menaikkan `versionCode` otomatis dan memakai kunci debug yang sama, jadi APK baru dapat dipasang langsung di atas yang lama. Mengubah `DEARME_API_BASE` cukup dengan menjalankan ulang build. Memperbarui backend tidak perlu membangun ulang APK.
