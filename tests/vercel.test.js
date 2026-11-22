@@ -16,7 +16,7 @@ async function boot(handler) {
 test('vercel: /api/health dijawab sebagai /health', async () => {
   const b = await boot(health);
   const r = await fetch(b.url + '/api/health?x=1');
-  assert.equal(r.status, 200); assert.deepEqual(await r.json(), { ok: true }); b.close();
+  assert.equal(r.status, 200); assert.deepEqual(await r.json(), { ok: true, configured: false }); b.close();
 });
 
 test('vercel: /api/chat tanpa API key membalas 503, bukan hang', async () => {

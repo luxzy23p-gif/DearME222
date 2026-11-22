@@ -18,7 +18,7 @@ function loadConfig(env = process.env) {
     trustProxy: env.TRUST_PROXY === '1',
     serveWeb: env.SERVE_WEB !== '0',
     geminiKey: env.GEMINI_API_KEY || '',
-    geminiModel: env.GEMINI_MODEL || 'gemini-2.5-flash',
+    geminiModel: env.GEMINI_MODEL || 'gemini-flash-latest',
     openaiKey: env.OPENAI_API_KEY || '',
     openaiModel: env.OPENAI_MODEL || 'gpt-4o-mini',
     quiet: false
@@ -110,7 +110,11 @@ function createServer(cfg, deps = {}) {
     res.setHeader('Referrer-Policy', 'no-referrer');
     const send = (status, obj) => { res.statusCode = status; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.setHeader('Cache-Control', 'no-store'); res.end(JSON.stringify(obj)); };
 
-    if (pathname === '/health') return send(200, { ok: true });
+    if (pathname === '/health') {
+      // configured: apakah API key sudah terisi (hanya ya/tidak, isi kunci tidak pernah ditampilkan)
+      const hasKey = Boolean(cfg.provider === 'openai' ? cfg.openaiKey : cfg.geminiKey);
+      return send(200, { ok: true, configured: hasKey });
+    }
 
     if (pathname === '/api/chat') {
       const origin = req.headers.origin;

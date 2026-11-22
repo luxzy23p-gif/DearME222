@@ -94,5 +94,18 @@ test('file statis: hanya whitelist, server.js dan .env tidak terbuka', async () 
   assert.equal((await fetch(b.url + '/')).status, 200);
   assert.equal((await fetch(b.url + '/app.js')).status, 200);
   for (const p of ['/server/server.js', '/.env', '/package.json', '/../package.json', '/health/x']) assert.equal((await fetch(b.url + p)).status, 404, p);
-  assert.equal((await fetch(b.url + '/health')).status, 200); b.close();
+  assert.equal((await fetch(b.url + '/health')).status, 200);
+  const hj = await (await fetch(b.url + '/health')).json();
+  assert.equal(hj.ok, true); assert.equal(hj.configured, true); b.close();
+});
+
+test('model Gemini bawaan memakai alias terbaru, bisa diganti lewat GEMINI_MODEL', () => {
+  assert.equal(loadConfig({}).geminiModel, 'gemini-flash-latest');
+  assert.equal(loadConfig({ GEMINI_MODEL: 'x' }).geminiModel, 'x');
+});
+
+test('health tidak membocorkan isi API key', async () => {
+  const b = await boot(cfg({ geminiKey: 'RAHASIA123' }));
+  const t = await (await fetch(b.url + '/health')).text();
+  assert.ok(!t.includes('RAHASIA123')); b.close();
 });
