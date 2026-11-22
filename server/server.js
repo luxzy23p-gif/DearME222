@@ -42,6 +42,14 @@ function validate(body) {
   return { persona: body.persona, nick, messages: msgs };
 }
 
+function upstreamError(status, body) {
+  const e = new Error('upstream ' + status);
+  e.httpStatus = status;
+  const er = body && body.error;
+  e.reason = String((er && (er.status || er.code || er.type)) || '').slice(0, 60);
+  return e;
+}
+
 async function callGemini(cfg, f, system, msgs, signal) {
   const r = await f(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.geminiModel)}:generateContent`, {
     method: 'POST', signal,
@@ -52,7 +60,7 @@ async function callGemini(cfg, f, system, msgs, signal) {
       generationConfig: { temperature: 0.9, maxOutputTokens: 400 }
     })
   });
-  if (!r.ok) throw new Error('upstream ' + r.status);
+  if (!r.ok) throw upstreamError(r.status, await r.json().catch(() => ({})));
   const j = await r.json();
   return ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map((p) => p.text || '').join('');
 }
@@ -66,7 +74,7 @@ async function callOpenAI(cfg, f, system, msgs, signal) {
       messages: [{ role: 'system', content: system }, ...msgs.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }))]
     })
   });
-  if (!r.ok) throw new Error('upstream ' + r.status);
+  if (!r.ok) throw upstreamError(r.status, await r.json().catch(() => ({})));
   const j = await r.json();
   return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
 }
@@ -113,7 +121,20 @@ function createServer(cfg, deps = {}) {
     if (pathname === '/health') {
       // configured: apakah API key sudah terisi (hanya ya/tidak, isi kunci tidak pernah ditampilkan)
       const hasKey = Boolean(cfg.provider === 'openai' ? cfg.openaiKey : cfg.geminiKey);
-      return send(200, { ok: true, configured: hasKey });
+      if (new URL(req.url, 'http://x').searchParams.get('ai') !== '1') return send(200, { ok: true, configured: hasKey });
+      // /health?ai=1: satu panggilan kecil ke penyedia AI untuk diagnosis. Hanya kode status, tidak ada isi kunci.
+      if (!hasKey) return send(200, { ok: true, configured: false });
+      if (limited(clientIp(req))) return send(429, { error: 'Terlalu banyak permintaan.' });
+      const ctl0 = new AbortController();
+      const to0 = setTimeout(() => ctl0.abort(), 15000);
+      try {
+        const call0 = cfg.provider === 'openai' ? callOpenAI : callGemini;
+        const t0 = String(await call0(cfg, f, 'Jawab singkat.', [{ role: 'user', text: 'hai' }], ctl0.signal)).trim();
+        return send(200, { ok: true, configured: true, ai: t0 ? 'ok' : 'kosong', provider: cfg.provider, model: cfg.provider === 'openai' ? cfg.openaiModel : cfg.geminiModel });
+      } catch (e) {
+        return send(200, { ok: true, configured: true, ai: 'gagal', provider: cfg.provider, model: cfg.provider === 'openai' ? cfg.openaiModel : cfg.geminiModel,
+          status: e.httpStatus || 0, reason: e.reason || (e.name === 'AbortError' ? 'timeout' : 'jaringan') });
+      } finally { clearTimeout(to0); }
     }
 
     if (pathname === '/api/chat') {
