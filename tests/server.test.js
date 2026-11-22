@@ -114,10 +114,10 @@ test('health?ai=1 melaporkan status penyedia tanpa membocorkan kunci', async () 
   const bad = async () => ({ ok: false, status: 404, json: async () => ({ error: { status: 'NOT_FOUND', message: 'model KUNCI-RAHASIA' } }) });
   const b = await boot(cfg({ geminiKey: 'KUNCI-RAHASIA' }), bad);
   const t = await (await fetch(b.url + '/health?ai=1')).text(); const j = JSON.parse(t);
-  assert.equal(j.ai, 'gagal'); assert.equal(j.status, 404); assert.equal(j.reason, 'NOT_FOUND'); assert.ok(!t.includes('KUNCI-RAHASIA')); b.close();
+  assert.equal(j.ai, 'gagal'); assert.equal(j.models[0].status, 404); assert.equal(j.models[0].reason, 'NOT_FOUND'); assert.ok(!t.includes('KUNCI-RAHASIA')); b.close();
   const ok = await boot(cfg(), okFetch);
   const j2 = await (await fetch(ok.url + '/health?ai=1')).json();
-  assert.equal(j2.ai, 'ok'); assert.equal(j2.model, 'gemini-flash-latest'); ok.close();
+  assert.equal(j2.ai, 'ok'); assert.equal(j2.models[0].model, 'gemini-flash-latest'); assert.equal(j2.models.length, 2); ok.close();
   const none = await boot(cfg({ geminiKey: '' }), okFetch);
   assert.equal((await (await fetch(none.url + '/health?ai=1')).json()).configured, false); none.close();
 });

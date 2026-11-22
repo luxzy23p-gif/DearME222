@@ -147,16 +147,21 @@ function createServer(cfg, deps = {}) {
       // /health?ai=1: satu panggilan kecil ke penyedia AI untuk diagnosis. Hanya kode status, tidak ada isi kunci.
       if (!hasKey) return send(200, { ok: true, configured: false });
       if (limited(clientIp(req))) return send(429, { error: 'Terlalu banyak permintaan.' });
-      const ctl0 = new AbortController();
-      const to0 = setTimeout(() => ctl0.abort(), 7000);
-      try {
-        const call0 = cfg.provider === 'openai' ? callOpenAI : callGemini;
-        const t0 = String(await call0(cfg, f, 'Jawab singkat.', [{ role: 'user', text: 'hai' }], ctl0.signal)).trim();
-        return send(200, { ok: true, configured: true, ai: t0 ? 'ok' : 'kosong', provider: cfg.provider, model: cfg.provider === 'openai' ? cfg.openaiModel : cfg.geminiModel });
-      } catch (e) {
-        return send(200, { ok: true, configured: true, ai: 'gagal', provider: cfg.provider, model: cfg.provider === 'openai' ? cfg.openaiModel : cfg.geminiModel,
-          status: e.httpStatus || 0, reason: e.reason || (e.name === 'AbortError' ? 'timeout' : 'jaringan') });
-      } finally { clearTimeout(to0); }
+      // satu uji per model, bersamaan, masing-masing maksimal 9 detik; hanya kode status dan alasan singkat
+      const models = cfg.provider === 'openai' ? [cfg.openaiModel] : [...new Set([cfg.geminiModel, cfg.geminiFallback].filter(Boolean))];
+      const probe = async (model) => {
+        const t0 = Date.now(); const ctl0 = new AbortController(); const to0 = setTimeout(() => ctl0.abort(), 9000);
+        try {
+          const text = cfg.provider === 'openai'
+            ? await callOpenAI(cfg, f, 'Jawab singkat.', [{ role: 'user', text: 'hai' }], ctl0.signal)
+            : await callGeminiModel(cfg, model, f, 'Jawab singkat.', [{ role: 'user', text: 'hai' }], ctl0.signal);
+          return { model, ai: String(text).trim() ? 'ok' : 'kosong', ms: Date.now() - t0 };
+        } catch (e) {
+          return { model, ai: 'gagal', status: e.httpStatus || 0, reason: e.reason || (e.name === 'AbortError' ? 'timeout' : 'jaringan'), ms: Date.now() - t0 };
+        } finally { clearTimeout(to0); }
+      };
+      const results = await Promise.all(models.map(probe));
+      return send(200, { ok: true, configured: true, provider: cfg.provider, ai: results.some((r) => r.ai === 'ok') ? 'ok' : 'gagal', models: results });
     }
 
     if (pathname === '/api/chat') {
