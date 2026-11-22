@@ -164,3 +164,24 @@ test('style: gaya sah diteruskan ke prompt, gaya palsu diabaikan', async () => {
   assert.ok(!/Gaya ceria/.test(seen[1])); assert.match(seen[1], /Gaya lembut dan feminin/); // bawaan Nara
   assert.equal((await post(b.url, { ...good, style: 123 })).status, 200); b.close();
 });
+
+test('mode topik: boleh tanpa/akhir pesan AI, ditambah pesan pengganti; prompt memuat arahan topik', async () => {
+  let sent;
+  const f = async (u, o) => { sent = JSON.parse(o.body); return okFetch(); };
+  const b = await boot(cfg(), f);
+  // obrolan hanya berisi sapaan AI
+  let r = await post(b.url, { persona: 'nara', topic: true, messages: [{ role: 'ai', text: 'Hai!' }] });
+  assert.equal(r.status, 200);
+  assert.match(sent.contents[sent.contents.length - 1].parts[0].text, /bingung mau ngomong apa/);
+  assert.match(sent.systemInstruction.parts[0].text, /SEKARANG: pengguna sedang bingung/);
+  // obrolan kosong juga boleh pada mode topik, tapi tidak pada mode biasa
+  assert.equal((await post(b.url, { persona: 'nara', topic: true, messages: [] })).status, 200);
+  assert.equal((await post(b.url, { persona: 'nara', messages: [] })).status, 400);
+  assert.equal((await post(b.url, { persona: 'nara', messages: [{ role: 'ai', text: 'x' }] })).status, 400);
+  // tanda krisis di pesan asli pengguna membatalkan mode topik
+  r = await post(b.url, { persona: 'nara', topic: true, messages: [{ role: 'user', text: 'aku pengen mati' }, { role: 'ai', text: 'aku di sini' }] });
+  assert.equal(r.status, 200);
+  assert.ok(!/SEKARANG: pengguna sedang bingung/.test(sent.systemInstruction.parts[0].text));
+  assert.match(sent.systemInstruction.parts[0].text, /PERHATIAN: pesan terakhir pengguna mengandung tanda krisis/);
+  b.close();
+});

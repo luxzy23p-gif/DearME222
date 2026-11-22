@@ -31,7 +31,8 @@ function loadConfig(env = process.env) {
 function validate(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'Permintaan tidak valid.' };
   if (typeof body.persona !== 'string' || !Object.prototype.hasOwnProperty.call(TC.PERSONAS, body.persona)) return { error: 'Persona tidak dikenal.' };
-  if (!Array.isArray(body.messages) || body.messages.length === 0 || body.messages.length > 60) return { error: 'Daftar pesan tidak valid.' };
+  const topic = body.topic === true;
+  if (!Array.isArray(body.messages) || (body.messages.length === 0 && !topic) || body.messages.length > 60) return { error: 'Daftar pesan tidak valid.' };
   const nick = typeof body.nick === 'string' ? body.nick.replace(/[\u0000-\u001f\u007f"]/g, ' ').trim().slice(0, 30) : '';
   let msgs = [];
   for (const m of body.messages) {
@@ -41,9 +42,11 @@ function validate(body) {
   }
   msgs = msgs.slice(-20);
   while (msgs.length && msgs[0].role !== 'user') msgs.shift();
+  // Mode topik: pengguna bingung mau bicara apa. Obrolan boleh kosong atau berakhir dari AI; ditambah satu pesan pengganti dari pengguna.
+  if (topic && (!msgs.length || msgs[msgs.length - 1].role !== 'user')) msgs.push({ role: 'user', text: '(aku bingung mau ngomong apa, bantu cari topik ya)' });
   if (!msgs.length || msgs[msgs.length - 1].role !== 'user') return { error: 'Pesan terakhir harus dari pengguna.' };
   const style = typeof body.style === 'string' && Object.prototype.hasOwnProperty.call(TC.STYLES, body.style) ? body.style : '';
-  return { persona: body.persona, nick, style, messages: msgs };
+  return { persona: body.persona, nick, style, topic, messages: msgs };
 }
 
 function upstreamError(status, body) {
@@ -300,8 +303,10 @@ function createServer(cfg, deps = {}) {
       if (v.error) return send(400, { error: v.error });
       const key = cfg.provider === 'openai' ? cfg.openaiKey : cfg.geminiKey;
       if (!key) return send(503, { error: 'Server belum dikonfigurasi.' });
-      const crisis = TC.detectCrisis(v.messages[v.messages.length - 1].text);
-      const system = TC.buildSystemPrompt(v.persona, { nick: v.nick, crisis, style: v.style });
+      // pesan pengganti mode topik tidak dihitung; tanda krisis di pesan asli pengguna tetap diperiksa dan membatalkan mode topik
+      const real = v.messages.slice().reverse().find((m) => m.role === 'user' && !/^\(aku bingung mau ngomong apa/.test(m.text));
+      const crisis = real ? TC.detectCrisis(real.text) : false;
+      const system = TC.buildSystemPrompt(v.persona, { nick: v.nick, crisis, style: v.style, topic: v.topic && !crisis });
       const ctl = new AbortController();
       const to = setTimeout(() => ctl.abort(), 26000);
       try {

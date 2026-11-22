@@ -88,11 +88,11 @@ function avatar(id, big) {
 }
 function showView(v) {
   view = v;
-  ['list', 'chat', 'theme', 'set'].forEach((x) => { $('#v-' + x).hidden = x !== v; });
-  $('#nav').hidden = v === 'chat';
+  ['list', 'chat', 'prof', 'theme', 'set'].forEach((x) => { $('#v-' + x).hidden = x !== v; });
+  $('#nav').hidden = v === 'chat' || v === 'prof';
   document.querySelectorAll('#nav button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
   if (v === 'list') renderList();
-  if (v === 'theme') renderThemes();
+  if (v === 'theme') { renderThemes(); renderWpPrev(); }
   if (v === 'set') renderSettings();
 }
 document.querySelectorAll('#nav button').forEach((b) => { b.onclick = () => { closePops(); showView(b.dataset.v); }; });
@@ -125,7 +125,7 @@ function renderList() {
   if (!ids.length) list.append(el('div', 'empty', tab === 'fav' ? 'Belum ada favorit.' : tab === 'new' ? 'Tidak ada pesan baru.' : 'Tidak ada yang cocok.'));
   ids.forEach((id) => {
     const c = chat(id), l = lastOf(id), p = TC.PERSONAS[id];
-    const r = el('button', 'crow'); r.append(avatar(id));
+    const r = el('button', 'crow'); const av0 = avatar(id); av0.onclick = (ev) => { ev.stopPropagation(); showProfile(id, 'list'); }; r.append(av0);
     const mid = el('div', 'mid'), top = el('div', 'top');
     top.append(el('b', '', p.name + (c.fav ? ' ★' : '')), el('span', 'tag', 'AI · ' + TC.styleOf(id, c.style).label), el('span', 'tm', l ? hm(l.t) : ''));
     mid.append(top, el('div', 'pv', l ? (l.role === 'user' ? 'Kamu: ' : '') + l.text : 'Ketuk untuk mulai ngobrol'));
@@ -287,6 +287,7 @@ function renderChat() {
     addBubble(m, id, i < lastAi);
   });
   setStatus(waitT || inflight ? 'wait' : 'idle');
+  renderIdeas();
   scrollDown();
 }
 function greeting(id) {
@@ -302,12 +303,14 @@ function openChat(id) {
   S.cur = id; const c = chat(id); c.unread = 0;
   if (!c.msgs.length) c.msgs.push({ role: 'ai', t: Date.now(), text: greeting(id) });
   save(); showView('chat'); renderChat();
+  curTopic = false; nudgeLeft = 1; armNudge();
   const last = c.msgs[c.msgs.length - 1];
   if (last && last.role === 'user' && !waitT && !inflight) showError({ message: 'pending' }, false, id);
 }
-$('#back').onclick = () => { closePops(); stopSpeak(); if (window.cancelRecording) window.cancelRecording(); S.cur = null; showView('list'); };
+$('#back').onclick = () => { closePops(); stopSpeak(); if (window.cancelRecording) window.cancelRecording(); nudgeLeft = 0; clearTimeout(nudgeT); S.cur = null; showView('list'); };
 
 /* ---------- AI: menunggu, menganalisa, membalas ---------- */
+let curTopic = false, nudgeT = null, nudgeLeft = 0;
 let waitT = null, waitStart = 0, lastKey = 0, token = 0, inflight = null, typEl = null, replyId = null;
 const userTyping = () => Date.now() - lastKey < 1500 || (document.activeElement === $('#inp') && $('#inp').value.trim().length > 0);
 
@@ -325,13 +328,13 @@ function maybeReply() {
   if (userTyping() && Date.now() - waitStart < WAIT_MAX) { setStatus('hold'); waitT = setTimeout(maybeReply, 900); return; }
   doReply();
 }
-async function askAI(id, ctl) {
+async function askAI(id, ctl, topic) {
   const c = chat(id);
   const hist = c.msgs.filter((m) => m.role === 'user' || m.role === 'ai').slice(-20).map((m) => ({ role: m.role, text: m.text }));
   if (!navigator.onLine) throw new Error('offline');
   const to = setTimeout(() => ctl.abort(), 30000);
   try {
-    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ persona: id, style: c.style, nick: S.nick, messages: hist }), signal: ctl.signal });
+    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(topic ? { persona: id, style: c.style, nick: S.nick, messages: hist, topic: true } : { persona: id, style: c.style, nick: S.nick, messages: hist }), signal: ctl.signal });
     const j = await r.json().catch(() => ({}));
     if (r.status === 429) throw new Error('rate');
     if (!r.ok || typeof j.text !== 'string') throw new Error('server');
@@ -345,19 +348,20 @@ function showError(e, crisis, id) {
   if (crisis) { const n = { role: 'notice', t: Date.now() }; addBubble(n, id); }
   const d = el('div', 'notice err'); d.append(el('p', '', why + ' Pesanmu tersimpan, kamu bisa kirim ulang.'));
   const b = el('button', 'retry', 'Kirim ulang');
-  b.onclick = () => { d.remove(); cancelReply(); replyId = id; doReply(); };
+  b.onclick = () => { d.remove(); cancelReply(); replyId = id; doReply(curTopic); };
   d.append(b); log.append(d); scrollDown();
 }
-async function doReply() {
+async function doReply(topic) {
   const id = replyId; if (!id) return;
+  curTopic = topic === true;
   const my = token, c = chat(id);
   const lastUser = c.msgs.slice().reverse().find((m) => m.role === 'user');
-  const crisis = lastUser ? TC.detectCrisis(lastUser.text) : false;
+  const crisis = lastUser && !curTopic ? TC.detectCrisis(lastUser.text) : false;
   const here = () => S.cur === id && view === 'chat';
   const ctl = new AbortController(); inflight = ctl;
   setStatus('think'); if (here()) typEl = showTyping();
   try {
-    const raw = await askAI(id, ctl);
+    const raw = await askAI(id, ctl, curTopic);
     if (my !== token) return;
     inflight = null; if (typEl) { typEl.remove(); typEl = null; }
     let parts = String(raw).split('|||').map((s) => s.trim()).filter(Boolean).slice(0, 3);
@@ -382,7 +386,7 @@ async function doReply() {
     if (typEl) { typEl.remove(); typEl = null; }
     showError(e, crisis, id);
   } finally {
-    if (my === token) { inflight = null; if (typEl) { typEl.remove(); typEl = null; } setStatus('idle'); }
+    if (my === token) { inflight = null; if (typEl) { typEl.remove(); typEl = null; } setStatus('idle'); armNudge(); }
   }
 }
 
@@ -393,18 +397,20 @@ function send(text, vn) {
   const c = chat(S.cur);
   log.querySelectorAll('.notice.err').forEach((n) => n.remove());
   const um = { role: 'user', text, t: Date.now(), vn: !!vn };
-  c.msgs.push(um); save(); addBubble(um, S.cur, false);
+  c.msgs.push(um); save(); addBubble(um, S.cur, false); $('#ideas').hidden = true; clearTimeout(nudgeT);
   $('#inp').value = ''; grow();
   scheduleReply(); // AI menunggu sebentar; mengetik lagi memperpanjang tunggu, pesan baru menggantikan balasan yang sedang disiapkan
 }
 function grow() { const i = $('#inp'); i.style.height = 'auto'; i.style.height = Math.min(i.scrollHeight, 120) + 'px'; }
 $('#send').onclick = () => { send($('#inp').value); $('#inp').focus(); };
-$('#inp').addEventListener('input', () => { lastKey = Date.now(); grow(); if (waitT) { setStatus('hold'); } });
+$('#inp').addEventListener('input', () => { lastKey = Date.now(); grow(); if (waitT) { setStatus('hold'); } armNudge(); });
 $('#inp').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send($('#inp').value); } });
 
 /* ---------- menu chat dan pilihan gaya ---------- */
 $('#vbtn').onclick = () => { const c = chat(S.cur); c.voice = !c.voice; if (!c.voice) stopSpeak(); save(); renderChat(); };
 $('#mbtn').onclick = () => { $('#menu').hidden = !$('#menu').hidden; };
+$('#m-profile').onclick = () => { $('#menu').hidden = true; showProfile(S.cur, 'chat'); };
+$('#m-topic').onclick = () => { $('#menu').hidden = true; startTopic(S.cur); };
 $('#m-fav').onclick = () => { const c = chat(S.cur); c.fav = !c.fav; save(); $('#menu').hidden = true; renderChat(); };
 let armed = false;
 $('#m-clear').onclick = () => {
@@ -489,6 +495,138 @@ if (!SR) { $('#mic').hidden = true; } else {
   window.cancelRecording = () => { if (rec) { cancelRec(); return true; } return false; };
 }
 
+/* ---------- ide obrolan: AI mencari topik kalau kamu bingung ---------- */
+function startTopic(id) {
+  if (!id || S.cur !== id || view !== 'chat') return;
+  if (inflight || waitT) { toast('Sebentar ya, balasan lagi disiapkan.'); return; }
+  $('#ideas').hidden = true; clearTimeout(nudgeT);
+  cancelReply(); replyId = id; doReply(true);
+}
+function renderIdeas() {
+  const box = $('#ideas'); box.innerHTML = '';
+  const c = chat(S.cur);
+  const fresh0 = !c.msgs.some((m) => m.role === 'user');
+  box.hidden = !fresh0;
+  if (!fresh0) return;
+  const t = el('button', 'idea main', '💡 Cariin topik'); t.onclick = () => startTopic(S.cur); box.append(t);
+  const day = Math.floor(Date.now() / 86400000);
+  const list = TC.STARTERS;
+  for (let i = 0; i < 3; i++) { const txt = list[(day + i) % list.length]; const b = el('button', 'idea', txt); b.onclick = () => send(txt); box.append(b); }
+}
+function armNudge() {
+  clearTimeout(nudgeT); nudgeT = null;
+  if (nudgeLeft <= 0 || view !== 'chat') return;
+  nudgeT = setTimeout(fireNudge, 75000);
+}
+// Kalau kamu diam cukup lama setelah pesan terakhir dari AI, dia membuka topik ringan (sekali per kali buka chat).
+function fireNudge() {
+  nudgeT = null;
+  const id = S.cur; if (!id || view !== 'chat' || document.hidden || !navigator.onLine) return;
+  if (inflight || waitT || userTyping() || $('#inp').value.trim()) { armNudge(); return; }
+  const msgs = chat(id).msgs;
+  const recent = msgs.slice(-8);
+  if (recent.some((m) => m.role === 'notice' || (m.role === 'user' && TC.detectCrisis(m.text)))) return; // jangan ganti topik setelah tanda krisis
+  const last = msgs.filter((m) => m.role === 'user' || m.role === 'ai').pop();
+  if (!last || last.role !== 'ai') return;
+  nudgeLeft = 0; startTopic(id);
+}
+
+/* ---------- profil teman AI ---------- */
+let profFrom = 'list';
+function showProfile(id, from) {
+  if (!has(TC.PERSONAS, id)) return;
+  closePops(); profFrom = from; S.cur = id;
+  clearTimeout(nudgeT);
+  showView('prof'); renderProfile(id);
+}
+function renderProfile(id) {
+  const p = TC.PERSONAS[id], pr = p.profile, c = chat(id), body = $('#pbody'); body.innerHTML = '';
+  const hero = el('div', 'phero'); const a = avatar(id, true); a.classList.add('xl');
+  hero.append(a, el('h2', '', p.name), el('p', 'ptag', pr.tagline), el('span', 'pbadge', 'Teman AI · ' + p.label));
+  body.append(hero);
+  const sec = (title) => { const d = el('div', 'psec'); d.append(el('h3', '', title)); body.append(d); return d; };
+  sec('Tentang').append(el('p', '', pr.bio));
+  const tg = sec('Sifat'); const tr = el('div', 'tagrow'); pr.tags.forEach((t) => tr.append(el('span', 'tagc', t))); tg.append(tr);
+  const tp = sec('Topik yang seru dibahas bareng'); const tr2 = el('div', 'tagrow');
+  pr.topics.forEach((t) => { const b = el('button', 'tagc act', t); b.onclick = () => { openChat(id); send('Yuk ngobrolin ' + t.toLowerCase()); }; tr2.append(b); });
+  tp.append(tr2, el('p', 'hint', 'Ketuk salah satu untuk mulai ngobrol.'));
+  const inf = sec('Info');
+  const first = c.msgs.find((m) => m.role === 'user');
+  const n = c.msgs.filter((m) => m.role === 'user').length;
+  [['Gaya chat', TC.styleOf(id, c.style).label], ['Suara', p.voice === 'male' ? 'Laki-laki' : p.voice === 'female' ? 'Perempuan' : 'Netral'], ['Pesanmu', String(n)], ['Mulai ngobrol', first ? new Date(first.t).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Belum'], ['Tips', pr.tip]].forEach(([k, v]) => {
+    const r = el('div', 'irow'); r.append(el('span', '', k), el('b', '', v)); inf.append(r);
+  });
+  const acts = el('div', 'pacts');
+  const go = el('button', 'pri', c.msgs.some((m) => m.role === 'user') ? 'Lanjut chat' : 'Mulai chat'); go.onclick = () => openChat(id);
+  const st = el('button', 'ghost2', 'Gaya chat dan suara'); st.onclick = () => { renderSheet(); $('#sheet').hidden = false; };
+  const vc = el('button', 'ghost2', 'Dengarkan suaranya'); vc.onclick = () => { stopSpeak(); speak(TC.styleOf(id, c.style).sample, id); };
+  const fv = el('button', 'ghost2', c.fav ? 'Hapus dari favorit' : 'Tandai favorit'); fv.onclick = () => { c.fav = !c.fav; save(); renderProfile(id); };
+  acts.append(go, st, vc, fv); body.append(acts);
+  body.append(el('p', 'foot', p.name + ' adalah AI, bukan manusia. Semua yang tertulis di profil ini menggambarkan karakter chat-nya, bukan riwayat hidup orang sungguhan.'));
+}
+$('#pback').onclick = () => {
+  closePops(); stopSpeak();
+  if (profFrom === 'chat' && S.cur) { chat(S.cur).unread = 0; save(); showView('chat'); renderChat(); curTopic = false; nudgeLeft = 1; armNudge(); }
+  else { S.cur = null; showView('list'); }
+};
+$('#av').onclick = $('.who').onclick = () => { if (S.cur) showProfile(S.cur, 'chat'); };
+
+/* ---------- wallpaper chat dari galeri ---------- */
+let WP = store.get('tc2wp', null);
+if (!WP || typeof WP.img !== 'string' || !/^data:image\/(jpeg|png|webp);base64,/.test(WP.img)) WP = null;
+else WP.dim = Math.max(0, Math.min(85, Number(WP.dim) || 0));
+function applyWallpaper() {
+  const wp = $('#wp');
+  if (WP) { wp.style.backgroundImage = 'url("' + WP.img + '")'; $('#wpdim').style.opacity = String(WP.dim / 100); wp.hidden = false; }
+  else { wp.style.backgroundImage = 'none'; wp.hidden = true; }
+}
+function renderWpPrev() {
+  const pv = $('#wpprev');
+  pv.style.backgroundImage = WP ? 'url("' + WP.img + '")' : 'none';
+  $('#wpempty').hidden = !!WP;
+  $('#wpdel').hidden = !WP; $('#wpdimr').disabled = !WP;
+  $('#wpdimr').value = WP ? String(WP.dim) : '35';
+}
+function saveWp() { try { localStorage.setItem('tc2wp', JSON.stringify(WP)); return true; } catch (e) { return false; } }
+// Foto dikecilkan dulu (maks. 1280 px, JPEG) supaya muat di penyimpanan HP dan chat tetap ringan.
+function fileToWallpaper(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !/^image\//.test(file.type)) return reject(new Error('bukan gambar'));
+    const fr = new FileReader();
+    fr.onerror = () => reject(new Error('gagal baca'));
+    fr.onload = () => {
+      const im = new Image();
+      im.onerror = () => reject(new Error('gambar rusak'));
+      im.onload = () => {
+        const k = Math.min(1, 1280 / Math.max(im.naturalWidth, im.naturalHeight));
+        const w = Math.max(1, Math.round(im.naturalWidth * k)), h = Math.max(1, Math.round(im.naturalHeight * k));
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        const cx = cv.getContext('2d'); cx.drawImage(im, 0, 0, w, h);
+        let q = 0.8, out = cv.toDataURL('image/jpeg', q);
+        while (out.length > 900000 && q > 0.35) { q -= 0.1; out = cv.toDataURL('image/jpeg', q); }
+        resolve(out);
+      };
+      im.src = String(fr.result);
+    };
+    fr.readAsDataURL(file);
+  });
+}
+$('#wppick').onclick = () => $('#wpfile').click();
+$('#wpfile').onchange = async () => {
+  const f = $('#wpfile').files && $('#wpfile').files[0];
+  $('#wpfile').value = '';
+  if (!f) return;
+  try {
+    const img = await fileToWallpaper(f);
+    const old = WP; WP = { img, dim: old ? old.dim : 35 };
+    if (!saveWp()) { WP = old; toast('Foto terlalu besar untuk disimpan. Coba foto lain.'); return; }
+    applyWallpaper(); renderWpPrev(); toast('Wallpaper dipasang.');
+  } catch (e) { toast('Fotonya tidak bisa dipakai. Coba foto lain.'); }
+};
+$('#wpdel').onclick = () => { WP = null; store.del('tc2wp'); applyWallpaper(); renderWpPrev(); };
+$('#wpdimr').oninput = () => { if (!WP) return; WP.dim = Number($('#wpdimr').value) || 0; $('#wpdim').style.opacity = String(WP.dim / 100); };
+$('#wpdimr').onchange = () => { if (WP) saveWp(); };
+
 /* ---------- pengaturan ---------- */
 function renderSettings() {
   $('#nick').value = S.nick;
@@ -522,7 +660,7 @@ $('#go').onclick = () => {
 };
 
 /* ---------- mulai, jaringan, tombol kembali Android ---------- */
-applyTheme();
+applyTheme(); applyWallpaper();
 if (!S.onboarded) { renderGender(); $('#setup').hidden = false; }
 showView('list');
 window.addEventListener('offline', () => { if (view === 'chat') setStatus('idle'); });
@@ -535,6 +673,7 @@ if (capApp && capApp.addListener) {
     if (!$('#sheet').hidden) $('#sheet').hidden = true;
     else if (!$('#menu').hidden) $('#menu').hidden = true;
     else if (!$('#emo').hidden) $('#emo').hidden = true;
+    else if (view === 'prof') $('#pback').click();
     else if (view === 'chat') $('#back').click();
     else if (view !== 'list') showView('list');
     else if (capApp.minimizeApp) capApp.minimizeApp();

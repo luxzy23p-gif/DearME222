@@ -31,6 +31,7 @@
 
   <!-- CHAT -->
   <section id="v-chat" class="view" hidden>
+    <div id="wp" hidden><div id="wpdim"></div></div>
     <header class="bar chat">
       <button class="ic" id="back" aria-label="Kembali"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
       <div class="av" id="av">N</div>
@@ -39,11 +40,14 @@
       <button class="ic" id="mbtn" aria-label="Menu"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></button>
     </header>
     <div id="menu" hidden>
+      <button id="m-profile">Lihat profil</button>
+      <button id="m-topic">Ide obrolan</button>
       <button id="m-style">Gaya chat dan suara</button>
       <button id="m-fav">Tandai favorit</button>
       <button id="m-clear">Hapus chat ini</button>
     </div>
     <main id="log" aria-live="polite"></main>
+    <div id="ideas" hidden></div>
     <div id="emo" hidden></div>
     <footer id="bar">
       <button class="ic" id="ebtn" aria-label="Emoji"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c1 1.4 2.2 2 3.5 2s2.5-.6 3.5-2"/><circle cx="9" cy="10" r=".6"/><circle cx="15" cy="10" r=".6"/></svg></button>
@@ -59,12 +63,31 @@
     </div>
   </section>
 
+  <!-- PROFIL -->
+  <section id="v-prof" class="view" hidden>
+    <header class="bar">
+      <button class="ic" id="pback" aria-label="Kembali"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <h1>Profil</h1><span class="sp"></span>
+    </header>
+    <div class="scroll" id="pbody"></div>
+  </section>
+
   <!-- TEMA -->
   <section id="v-theme" class="view" hidden>
     <header class="bar"><span class="sp"></span><h1>Tema</h1><span class="sp"></span></header>
     <div class="scroll">
       <p class="hint">Pilih tampilan yang paling nyaman buat matamu.</p>
       <div id="themes" class="themes"></div>
+      <h2>Wallpaper chat</h2>
+      <p class="hint">Pasang foto dari galeri sebagai latar semua chat. Fotonya hanya disimpan di HP ini.</p>
+      <div id="wpprev" class="wpprev"><span id="wpempty">Belum ada wallpaper</span></div>
+      <div class="wprow">
+        <button id="wppick" class="pri">Pilih dari galeri</button>
+        <button id="wpdel" class="ghost2">Hapus</button>
+      </div>
+      <label for="wpdimr">Redupkan latar (supaya tulisan jelas)</label>
+      <input id="wpdimr" type="range" min="0" max="85" value="35">
+      <input id="wpfile" type="file" accept="image/*" hidden>
     </div>
   </section>
 

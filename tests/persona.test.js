@@ -64,3 +64,14 @@ test('prompt: gaya bicara manusiawi, tapi aturan kejujuran AI tetap ada', () => 
   assert.match(p, /BERBICARA SEPERTI MANUSIA/); assert.match(p, /Aku mengerti perasaanmu/); assert.match(p, /jawab jujur/);
   assert.match(p, /Kamu AI, bukan manusia/); assert.match(p, /Jangan berperan sebagai pacar/);
 });
+
+test('profil: tiap persona punya profil lengkap yang menyebut dirinya AI, dan prompt memuat aturan dua arah', () => {
+  for (const id of Object.keys(TC.PERSONAS)) {
+    const pr = TC.PERSONAS[id].profile;
+    assert.ok(pr.tagline && pr.bio.length > 40 && pr.tip && pr.tags.length >= 3 && pr.topics.length >= 4, id);
+    assert.match(pr.bio, /AI/);
+    const p = TC.buildSystemPrompt(id);
+    assert.match(p, /OBROLAN DUA ARAH/); assert.match(p, /Jangan mengarang pengalaman hidup nyata/); assert.match(p, new RegExp(pr.topics[1]));
+  }
+  assert.ok(TC.STARTERS.length >= 4);
+});
