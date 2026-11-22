@@ -173,3 +173,5 @@ input#nick,input#nick2{width:100%;padding:11px 14px;border-radius:12px;border:1p
 #setup .box{max-width:460px;margin:0 auto}
 #setup h1{font-size:1.7rem;margin:.4em 0 .2em}
 #setup p{color:var(--mut);line-height:1.5}
+
+#toast{pointer-events:none;position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);max-width:86vw;background:rgba(20,20,24,.92);color:#fff;padding:10px 16px;border-radius:16px;font-size:.85rem;text-align:center;z-index:50}

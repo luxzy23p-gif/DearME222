@@ -305,7 +305,7 @@ function openChat(id) {
   const last = c.msgs[c.msgs.length - 1];
   if (last && last.role === 'user' && !waitT && !inflight) showError({ message: 'pending' }, false, id);
 }
-$('#back').onclick = () => { closePops(); stopSpeak(); S.cur = null; showView('list'); };
+$('#back').onclick = () => { closePops(); stopSpeak(); if (window.cancelRecording) window.cancelRecording(); S.cur = null; showView('list'); };
 
 /* ---------- AI: menunggu, menganalisa, membalas ---------- */
 let waitT = null, waitStart = 0, lastKey = 0, token = 0, inflight = null, typEl = null, replyId = null;
@@ -439,27 +439,53 @@ $('#ebtn').onclick = () => { $('#emo').hidden = !$('#emo').hidden; };
 
 /* ---------- merekam suara (jika perangkat mendukung pengenalan suara) ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+function toast(msg) {
+  let t = $('#toast');
+  if (!t) { t = el('div'); t.id = 'toast'; document.body.append(t); }
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.h); toast.h = setTimeout(() => { t.hidden = true; }, 3500);
+}
 if (!SR) { $('#mic').hidden = true; } else {
-  let rec = null, timer = null, t0 = 0, cancelled = false, heard = '';
+  let rec = null, timer = null, watch = null, t0 = 0, heard = '', started = false;
   const wave = $('#wave');
-  const endRec = () => { clearInterval(timer); timer = null; $('#rec').hidden = true; $('#bar').hidden = false; $('#mic').classList.remove('on'); };
+  const endRec = () => { clearInterval(timer); timer = null; clearTimeout(watch); watch = null; $('#rec').hidden = true; $('#bar').hidden = false; $('#mic').classList.remove('on'); };
+  // Membatalkan langsung, tanpa menunggu mesin pengenal suara membalas (di beberapa HP ia tidak pernah membalas).
+  const cancelRec = (msg) => {
+    const r = rec; rec = null; heard = '';
+    if (r) { r.onresult = r.onerror = r.onend = r.onstart = null; try { r.abort(); } catch (e) { try { r.stop(); } catch (e2) { /* abaikan */ } } }
+    endRec();
+    if (msg) toast(msg);
+  };
+  // Selesai merekam: kirim hasilnya. Kalau tidak ada yang terdengar, tutup saja.
+  const finishRec = () => {
+    const r = rec; const h = heard; rec = null; heard = '';
+    if (r) { r.onresult = r.onerror = r.onend = r.onstart = null; try { r.stop(); } catch (e) { /* abaikan */ } }
+    endRec();
+    if (h.trim()) send(h, true); else toast('Suaramu belum terdengar. Coba lagi ya.');
+  };
   $('#mic').onclick = () => {
     if (rec) return;
-    rec = new SR(); rec.lang = 'id-ID'; rec.interimResults = true; heard = ''; cancelled = false;
+    rec = new SR(); rec.lang = 'id-ID'; rec.interimResults = true; heard = ''; started = false;
+    rec.onstart = () => { started = true; clearTimeout(watch); watch = null; };
     rec.onresult = (e) => { heard = Array.from(e.results).map((r) => r[0].transcript).join(' '); };
-    rec.onerror = () => {};
-    rec.onend = () => { const h = heard; rec = null; endRec(); if (!cancelled && h.trim()) send(h, true); };
+    rec.onerror = (e) => { if (e && e.error === 'no-speech') return cancelRec('Suaramu belum terdengar. Coba lagi ya.'); cancelRec('Mikrofon tidak bisa dipakai di perangkat ini. Silakan ketik saja.'); };
+    rec.onend = () => finishRec();
     wave.innerHTML = ''; for (let i = 0; i < 48; i++) wave.append(el('i'));
+    $('#rec-t').textContent = '0:00';
     t0 = Date.now(); $('#bar').hidden = true; $('#rec').hidden = false; $('#mic').classList.add('on');
     timer = setInterval(() => {
-      const s = Math.floor((Date.now() - t0) / 1000); $('#rec-t').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+      const sec = Math.floor((Date.now() - t0) / 1000); $('#rec-t').textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
       const kids = wave.children; for (let i = 0; i < kids.length - 1; i++) kids[i].style.height = kids[i + 1].style.height;
       kids[kids.length - 1].style.height = (4 + Math.random() * 22) + 'px';
+      if (sec >= 120) finishRec(); // batas 2 menit
     }, 110);
-    try { rec.start(); } catch (e) { rec = null; endRec(); }
+    // kalau mesin pengenal tidak pernah mulai, jangan biarkan layar rekam macet
+    watch = setTimeout(() => { if (!started) cancelRec('Mikrofon tidak merespons. Silakan ketik saja.'); }, 5000);
+    try { rec.start(); } catch (e) { cancelRec('Mikrofon tidak bisa dipakai di perangkat ini. Silakan ketik saja.'); }
   };
-  $('#rec-send').onclick = () => { if (rec) rec.stop(); };
-  $('#rec-del').onclick = () => { cancelled = true; if (rec) rec.stop(); else endRec(); };
+  $('#rec-send').onclick = finishRec;
+  $('#rec-del').onclick = () => cancelRec();
+  window.cancelRecording = () => { if (rec) { cancelRec(); return true; } return false; };
 }
 
 /* ---------- pengaturan ---------- */
@@ -500,10 +526,11 @@ if (!S.onboarded) { renderGender(); $('#setup').hidden = false; }
 showView('list');
 window.addEventListener('offline', () => { if (view === 'chat') setStatus('idle'); });
 window.addEventListener('online', () => { if (view === 'chat') setStatus('idle'); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) stopSpeak(); else scrollDown(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { stopSpeak(); if (window.cancelRecording) window.cancelRecording(); } else scrollDown(); });
 const capApp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
 if (capApp && capApp.addListener) {
   capApp.addListener('backButton', () => {
+    if (window.cancelRecording && window.cancelRecording()) return;
     if (!$('#sheet').hidden) $('#sheet').hidden = true;
     else if (!$('#menu').hidden) $('#menu').hidden = true;
     else if (!$('#emo').hidden) $('#emo').hidden = true;
