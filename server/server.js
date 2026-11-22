@@ -126,7 +126,7 @@ function createServer(cfg, deps = {}) {
       if (!hasKey) return send(200, { ok: true, configured: false });
       if (limited(clientIp(req))) return send(429, { error: 'Terlalu banyak permintaan.' });
       const ctl0 = new AbortController();
-      const to0 = setTimeout(() => ctl0.abort(), 15000);
+      const to0 = setTimeout(() => ctl0.abort(), 7000);
       try {
         const call0 = cfg.provider === 'openai' ? callOpenAI : callGemini;
         const t0 = String(await call0(cfg, f, 'Jawab singkat.', [{ role: 'user', text: 'hai' }], ctl0.signal)).trim();
