@@ -31,6 +31,14 @@ Aplikasi Android tidak bisa memakai `localhost` atau `http://`. Pakai layanan ho
 - Isi environment variable di dashboard hosting (bukan di file yang di-commit), dan set `TRUST_PROXY=1`.
 - Cek `https://ALAMAT-ANDA/health` harus membalas `{"ok":true}`.
 
+### Alternatif tanpa kartu: Vercel
+Folder `api/` + `vercel.json` menjalankan backend yang sama sebagai fungsi serverless Vercel (paket Hobby gratis, tanpa kartu).
+1. vercel.com, daftar dengan GitHub, **Add New, Project**, impor repo ini.
+2. Framework: **Other**. Biarkan Build/Install Command (sudah diatur `vercel.json`).
+3. **Environment Variables**: `GEMINI_API_KEY` (kunci), `PROVIDER` = `gemini`.
+4. Deploy. Alamatnya (contoh `https://nama.vercel.app`) dipakai sebagai `DEARME_API_BASE`. Cek `https://nama.vercel.app/health`.
+Catatan: pembatas laju disimpan di memori per instance, jadi di Vercel hanya pelindung kasar.
+
 ## 2. Membangun APK lewat GitHub Actions
 Satu kali di repo GitHub:
 1. **Settings → Secrets and variables → Actions → Variables → New repository variable**: nama `DEARME_API_BASE`, isi alamat backend HTTPS Anda (contoh `https://dearme-api.onrender.com`).
