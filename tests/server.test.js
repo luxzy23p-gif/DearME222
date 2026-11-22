@@ -121,3 +121,23 @@ test('health?ai=1 melaporkan status penyedia tanpa membocorkan kunci', async () 
   const none = await boot(cfg({ geminiKey: '' }), okFetch);
   assert.equal((await (await fetch(none.url + '/health?ai=1')).json()).configured, false); none.close();
 });
+
+test('Gemini sibuk (503): pindah ke model cadangan lalu berhasil', async () => {
+  const urls = [];
+  const f = async (u) => { urls.push(u); return urls.length === 1 ? { ok: false, status: 503, json: async () => ({ error: { status: 'UNAVAILABLE' } }) } : okFetch(); };
+  const b = await boot(cfg(), f);
+  const r = await post(b.url, good); const j = await r.json();
+  assert.equal(r.status, 200); assert.match(j.text, /dengerin/);
+  assert.ok(urls[0].includes('gemini-flash-latest') && urls[1].includes('gemini-flash-lite-latest')); b.close();
+});
+
+test('Gemini: kunci salah (400/403) tidak dicoba ulang, 503 terus -> 502', async () => {
+  let n = 0;
+  const bad = async () => { n++; return { ok: false, status: 403, json: async () => ({ error: { status: 'PERMISSION_DENIED' } }) }; };
+  const b = await boot(cfg(), bad);
+  assert.equal((await post(b.url, good)).status, 502); assert.equal(n, 1); b.close();
+  let m = 0;
+  const down = async () => { m++; return { ok: false, status: 503, json: async () => ({}) }; };
+  const b2 = await boot(cfg(), down);
+  assert.equal((await post(b2.url, good)).status, 502); assert.equal(m, 3); b2.close();
+});

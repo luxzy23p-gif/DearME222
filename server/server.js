@@ -19,6 +19,7 @@ function loadConfig(env = process.env) {
     serveWeb: env.SERVE_WEB !== '0',
     geminiKey: env.GEMINI_API_KEY || '',
     geminiModel: env.GEMINI_MODEL || 'gemini-flash-latest',
+    geminiFallback: env.GEMINI_FALLBACK_MODEL || 'gemini-flash-lite-latest',
     openaiKey: env.OPENAI_API_KEY || '',
     openaiModel: env.OPENAI_MODEL || 'gpt-4o-mini',
     quiet: false
@@ -50,8 +51,8 @@ function upstreamError(status, body) {
   return e;
 }
 
-async function callGemini(cfg, f, system, msgs, signal) {
-  const r = await f(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.geminiModel)}:generateContent`, {
+async function callGeminiModel(cfg, model, f, system, msgs, signal) {
+  const r = await f(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.geminiKey },
     body: JSON.stringify({
@@ -63,6 +64,27 @@ async function callGemini(cfg, f, system, msgs, signal) {
   if (!r.ok) throw upstreamError(r.status, await r.json().catch(() => ({})));
   const j = await r.json();
   return ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map((p) => p.text || '').join('');
+}
+
+// Gemini kadang membalas 503 (sibuk) atau 404 (model dihentikan). Coba model utama, lalu model cadangan,
+// lalu model utama sekali lagi. Kesalahan lain (kunci salah, permintaan salah) langsung dilaporkan.
+const RETRYABLE = new Set([404, 429, 500, 502, 503, 504]);
+async function callGemini(cfg, f, system, msgs, signal) {
+  const order = [cfg.geminiModel, cfg.geminiFallback, cfg.geminiModel].filter(Boolean);
+  let last;
+  for (let i = 0; i < order.length; i++) {
+    try {
+      const text = await callGeminiModel(cfg, order[i], f, system, msgs, signal);
+      if (String(text).trim()) return text;
+      last = new Error('kosong');
+    } catch (e) {
+      if (e.name === 'AbortError' || !RETRYABLE.has(e.httpStatus)) throw e;
+      last = e;
+    }
+    if (i === order.length - 2 && !cfg.quiet) console.warn('Gemini: mencoba model utama lagi');
+    if (i < order.length - 1) await new Promise((r) => setTimeout(r, i === 1 ? 700 : 0));
+  }
+  throw last;
 }
 
 async function callOpenAI(cfg, f, system, msgs, signal) {
