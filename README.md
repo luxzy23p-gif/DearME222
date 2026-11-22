@@ -1,64 +1,54 @@
-# X FIVE LIVE 1.0.0 — Status Build
+# DearMe
 
-Mod client-side Fabric untuk Minecraft Java 26.2 (target Java 25). Dokumen ini memisahkan dengan jelas apa yang sudah diuji, apa yang baru ditulis, dan apa yang belum dikerjakan.
+Teman AI pendengar untuk bercerita dan berkeluh kesah. Persona: **Nara**, **Raka**, **Sena**. AI selalu jujur bahwa ia AI, tidak berperan sebagai pasangan, dan menampilkan info bantuan saat pengguna menyinggung krisis.
 
-## Sudah diuji (48/48 tes lulus, JDK 21)
+Package ID Android: `com.finny4041.dearme`
 
-Tes ada di `tests/com/xfive/live/tests/XFiveTests.java` dan hanya memakai kode tanpa Minecraft.
+## Arsitektur
+```
+www/        antarmuka (HTML/CSS/JS) yang dibungkus Capacitor menjadi APK, juga bisa dibuka sebagai web
+server/     backend Node.js tanpa dependensi (satu-satunya tempat API key)
+tests/      tes otomatis (node --test)
+scripts/    skrip build: write-config.mjs, configure-android.mjs
+signing/    kunci debug tetap agar APK baru bisa menimpa yang lama
+.github/    workflow build APK dan pembuat lockfile
+```
+APK **tidak berisi API key**. APK hanya memanggil backend HTTPS Anda di `/api/chat`.
 
-- **Parser LRC**: timestamp `[mm:ss]`, `[mm:ss.x]`, `[mm:ss.xx]`, `[mm:ss.xxx]`, beberapa timestamp per baris, tag `[offset:ms]`, dan baris metadata yang dilewati.
-- **Lirik aktif**: pencarian baris berdasarkan waktu (binary search), termasuk sebelum baris pertama dan di akhir lagu.
-- **Chat**: antrean pesan, jeda kecepatan rilis, batas jumlah pesan, durasi tampil, filter kata terlarang, dan pesan manual/simulasi lewat `submit()`.
-- **Playlist**: pindai folder sekali (bukan per frame), baca "Artis - Judul" dari nama file, next/previous dengan wrap-around.
-- **Config**: simpan dan muat `config/xfive-live.properties`, nilai di luar batas dikunci, nilai rusak kembali ke default.
+## 1. Backend
+Butuh Node.js 20.6+ dan API key Gemini atau OpenAI.
 
-## Ditulis, tapi belum dikompilasi atau diuji di game
+```bash
+cp .env.example .env     # isi GEMINI_API_KEY (atau OPENAI_API_KEY + PROVIDER=openai)
+npm start                # http://localhost:3000, hanya untuk uji lokal
+npm test                 # 17 tes
+```
+Variabel `.env`: `PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `ALLOWED_ORIGINS` (default `https://localhost,capacitor://localhost`), `RATE_LIMIT_PER_MIN`, `TRUST_PROXY`, `PORT`. Cek nama model terbaru di dokumentasi penyedia.
 
-- Entrypoint `XFiveLiveClient`, keybind F8/F9/F10, dan registrasi HUD.
-- HUD musik, lirik, dan chat, serta `GlassPanelRenderer`.
-- Pemutar WAV (`AudioPlayer`) memakai `javax.sound`. Kodenya terkompilasi di JDK 21, tapi belum pernah benar-benar memutar audio.
-- Nama API Fabric dan Minecraft 26.2 (`KeyMapping.Category`, `KeyMappingHelper`, `GuiGraphicsExtractor.fill/text`, `HudElementRegistry`, dan lainnya) diambil dari dokumentasi dan hasil pencarian, belum dicek terhadap jar asli. Ini tempat paling mungkin error saat pertama kali build.
+### Deploy (wajib HTTPS)
+Aplikasi Android tidak bisa memakai `localhost` atau `http://`. Pakai layanan hosting yang memberi HTTPS otomatis (Render, Railway, Fly.io, atau VPS dengan Nginx dan sertifikat).
+- Gunakan `server/Dockerfile` (build dari akar repo: `docker build -f server/Dockerfile .`).
+- Isi environment variable di dashboard hosting (bukan di file yang di-commit), dan set `TRUST_PROXY=1`.
+- Cek `https://ALAMAT-ANDA/health` harus membalas `{"ok":true}`.
 
-Pemeriksaan sintaks: seluruh file Minecraft tidak punya error parser. Error yang muncul hanya simbol dan paket Minecraft/Fabric yang tidak ada di lingkungan ini.
+## 2. Membangun APK lewat GitHub Actions
+Satu kali di repo GitHub:
+1. **Settings → Secrets and variables → Actions → Variables → New repository variable**: nama `DEARME_API_BASE`, isi alamat backend HTTPS Anda (contoh `https://dearme-api.onrender.com`).
+2. Tab **Actions → Generate lockfile → Run workflow**. Ini membuat `package-lock.json` (dependensi terkunci) dan meng-commit-nya.
+3. Tab **Actions → Build Android APK → Run workflow**. Build juga jalan otomatis setiap ada push ke `main`.
 
-## Belum dikerjakan (tidak sesuai spesifikasi penuh)
+Build gagal dengan pesan jelas bila: lockfile belum ada, `DEARME_API_BASE` kosong/bukan HTTPS/berisi localhost, tes gagal, atau Gradle error (lihat log langkah terkait).
 
-- **MP3 dan OGG**: belum didukung. Perlu library decoder tambahan.
-- **Android / Zalith**: `javax.sound` tidak tersedia di Android. Pemutaran audio di HP memerlukan backend audio lain. Build ini belum menyediakannya, jadi musik kemungkinan tidak berbunyi di Zalith.
-- **Layar pengaturan** (`XFiveLiveScreen`, `SettingsScreen`) dan input chat manual lewat GUI: belum ada. Pengaturan lewat file config.
-- **Kontrol musik di HUD** (tombol play/pause/next): belum. HUD hanya menampilkan.
-- **Drag and drop HUD** dan skala per komponen: belum. Posisi diatur lewat `hud.<nama>.x/y` di file config, dan skala masih global.
-- **Sudut membulat, animasi transisi, album artwork, avatar penonton**: belum.
-- **SRT**: belum.
-- **TikTok LIVE**: di luar cakupan versi ini, sesuai spesifikasi.
-- **Ukuran font lirik**: saat ini hanya mengatur jarak baris, belum menskala teks.
-- **Auto resume**: memutar lagu pertama saat game mulai, bila folder musik sudah diatur.
-- **Right Shift membuka layar**: belum, karena layar belum dibuat.
+### Mengunduh dan memasang APK
+Buka run yang berhasil → bagian **Artifacts** → unduh `DearMe-debug-apk` → ekstrak zip → buka `app-debug.apk` di HP Android (izinkan "pasang dari sumber ini" bila diminta).
 
-## Cara build (di PC dengan internet dan JDK 25)
+### Memperbarui aplikasi
+Ubah kode lalu push ke `main`. Build baru menaikkan `versionCode` otomatis dan memakai kunci debug yang sama, jadi APK baru dapat dipasang langsung di atas yang lama. Mengubah `DEARME_API_BASE` cukup dengan menjalankan ulang build. Memperbarui backend tidak perlu membangun ulang APK.
 
-1. Pastikan `loom_version` di `gradle.properties` sesuai versi Fabric Loom terbaru untuk 26.x.
-2. Jalankan `./gradlew build`.
-3. Hasilnya di `build/libs/XFiveLive-1.0.0.jar`.
+## Catatan penting
+- Ini APK **debug**, untuk uji dan pemakaian pribadi. Kunci debug di `signing/` bersifat publik. Untuk rilis ke Play Store, buat APK/AAB release dengan keystore rahasia Anda sendiri.
+- Input suara (mikrofon) memakai Web Speech API yang umumnya tidak tersedia di Android WebView, jadi tombolnya otomatis tersembunyi di APK. Balasan suara memakai TTS bawaan perangkat.
+- Riwayat chat tersimpan di penyimpanan lokal aplikasi (backup cloud Android dimatikan). Isi chat dikirim ke penyedia AI (Google/OpenAI) untuk diproses; cantumkan ini dalam kebijakan privasi sebelum rilis publik.
+- Aplikasi ini bukan layanan kesehatan mental dan tidak boleh dipromosikan sebagai pengganti psikolog.
 
-Jika build gagal, error pertama kemungkinan berasal dari nama API Minecraft yang belum diverifikasi di file HUD, `XFiveLiveClient`, atau `GlassPanelRenderer`.
-
-## Pengaturan
-
-File: `config/xfive-live.properties` (dibuat otomatis saat pertama kali disimpan).
-
-- Folder musik default: `xfive-music` di dalam folder game. Taruh file `.mp3`, `.ogg`, atau `.wav` di sana. Folder ini dibuat otomatis saat game dibuka.
-- `music.folder`: bisa diganti ke folder lain lewat file config (belum ada menu di dalam game).
-- `lyrics`: file `.lrc` dengan nama sama seperti lagu (`Artis - Judul.wav` dan `Artis - Judul.lrc`) dibaca otomatis saat lagu berganti.
-- `chat.*`, `appearance.*`, `general.*`, `hud.*`: lihat `XFiveConfig.java`.
-
-## Tombol
-
-| Tombol | Fungsi |
-|---|---|
-| Right Shift | Buka menu pengaturan X FIVE LIVE |
-| F8 | Tampilkan/sembunyikan HUD |
-| F9 | Tampilkan/sembunyikan lirik |
-| F10 | Tampilkan/sembunyikan chat |
-
-Tombol ini terdaftar sebagai keybind Minecraft, sehingga bisa diubah di Controls.
+Lihat `AUDIT.md` untuk daftar bug yang diperbaiki dan hasil pengujian.

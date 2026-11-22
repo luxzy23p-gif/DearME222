@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="theme-color" content="#2a2850">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DearMe</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="av" id="av">T</div>
+    <div class="who"><b id="nm">DearMe</b><small id="st">Teman AI · bukan manusia</small></div>
+    <button class="ic" id="vbtn" title="Balasan suara" aria-label="Balasan suara" aria-pressed="false">🔈</button>
+    <button class="ic" id="mbtn" title="Menu" aria-label="Menu">⋯</button>
+  </header>
+  <div id="menu" hidden><button id="chg">Ganti teman ngobrol</button><button id="clr">Hapus semua riwayat</button></div>
+  <main id="log" aria-live="polite"></main>
+  <div id="emo" hidden></div>
+  <footer>
+    <button class="ic" id="ebtn" aria-label="Emoji">😊</button>
+    <textarea id="inp" rows="1" placeholder="Tulis pesan…" aria-label="Tulis pesan"></textarea>
+    <button class="ic" id="mic" aria-label="Rekam pesan suara">🎤</button>
+    <button id="send" aria-label="Kirim">➤</button>
+  </footer>
+</div>
+
+<section id="setup" hidden>
+  <div class="box">
+    <h1>Mau cerita apa hari ini?</h1>
+    <p>DearMe adalah AI pendengar. Dia bukan manusia dan bukan pengganti psikolog atau orang terdekatmu. Riwayat chat hanya tersimpan di perangkat ini.</p>
+    <label>Aku seorang…</label>
+    <div class="row" id="gen"></div>
+    <label>Ngobrol dengan</label>
+    <div class="row" id="pers"></div>
+    <label for="nick">Nama panggilan (boleh dikosongkan)</label>
+    <input id="nick" maxlength="30" autocomplete="off">
+    <button id="go" disabled>Mulai ngobrol</button>
+  </div>
+</section>
+
+<script src="config.js"></script>
+<script src="persona.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

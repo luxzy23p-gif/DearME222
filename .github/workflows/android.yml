@@ -1,0 +1,73 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Pastikan lockfile ada
+        run: |
+          if [ ! -f package-lock.json ]; then
+            echo "::error::package-lock.json belum ada. Jalankan workflow 'Generate lockfile' sekali, lalu jalankan build ini lagi."
+            exit 1
+          fi
+
+      - name: Pasang dependensi (terkunci)
+        run: npm ci
+
+      - name: Jalankan tes
+        run: npm test
+
+      - name: Tulis alamat backend
+        env:
+          API_BASE: ${{ vars.DEARME_API_BASE }}
+        run: node scripts/write-config.mjs
+
+      - name: Siapkan proyek Android
+        run: |
+          [ -d android ] || npx cap add android
+          node scripts/configure-android.mjs
+          npx cap sync android
+
+      - name: Pakai kunci debug tetap (agar APK baru bisa menimpa yang lama)
+        run: |
+          mkdir -p ~/.android
+          cp signing/debug.keystore ~/.android/debug.keystore
+
+      - name: Build APK debug
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Unggah APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DearMe-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
