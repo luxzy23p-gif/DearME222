@@ -100,7 +100,7 @@ test('file statis: hanya whitelist, server.js dan .env tidak terbuka', async () 
 });
 
 test('model Gemini bawaan memakai alias terbaru, bisa diganti lewat GEMINI_MODEL', () => {
-  assert.equal(loadConfig({}).geminiModel, 'gemini-flash-latest');
+  assert.equal(loadConfig({}).geminiModel, 'gemini-flash-lite-latest'); assert.equal(loadConfig({}).geminiFallback, 'gemini-flash-latest');
   assert.equal(loadConfig({ GEMINI_MODEL: 'x' }).geminiModel, 'x');
 });
 
@@ -117,7 +117,7 @@ test('health?ai=1 melaporkan status penyedia tanpa membocorkan kunci', async () 
   assert.equal(j.ai, 'gagal'); assert.equal(j.models[0].status, 404); assert.equal(j.models[0].reason, 'NOT_FOUND'); assert.ok(!t.includes('KUNCI-RAHASIA')); b.close();
   const ok = await boot(cfg(), okFetch);
   const j2 = await (await fetch(ok.url + '/health?ai=1')).json();
-  assert.equal(j2.ai, 'ok'); assert.equal(j2.models[0].model, 'gemini-flash-latest'); assert.equal(j2.models.length, 2); ok.close();
+  assert.equal(j2.ai, 'ok'); assert.equal(j2.models[0].model, 'gemini-flash-lite-latest'); assert.equal(j2.models.length, 2); ok.close();
   const none = await boot(cfg({ geminiKey: '' }), okFetch);
   assert.equal((await (await fetch(none.url + '/health?ai=1')).json()).configured, false); none.close();
 });
@@ -128,7 +128,7 @@ test('Gemini sibuk (503): pindah ke model cadangan lalu berhasil', async () => {
   const b = await boot(cfg(), f);
   const r = await post(b.url, good); const j = await r.json();
   assert.equal(r.status, 200); assert.match(j.text, /dengerin/);
-  assert.ok(urls[0].includes('gemini-flash-latest') && urls[1].includes('gemini-flash-lite-latest')); b.close();
+  assert.ok(urls[0].includes('gemini-flash-lite-latest') && urls[1].includes('gemini-flash-latest') && !urls[1].includes('lite')); b.close();
 });
 
 test('Gemini: kunci salah (400/403) tidak dicoba ulang, 503 terus -> 502', async () => {
@@ -140,4 +140,16 @@ test('Gemini: kunci salah (400/403) tidak dicoba ulang, 503 terus -> 502', async
   const down = async () => { m++; return { ok: false, status: 503, json: async () => ({}) }; };
   const b2 = await boot(cfg(), down);
   assert.equal((await post(b2.url, good)).status, 502); assert.equal(m, 3); b2.close();
+});
+
+test('model utama lambat (timeout) -> pindah ke cadangan, tidak menghabiskan semua waktu', async () => {
+  const urls = [];
+  const f = async (u, o) => {
+    urls.push(u);
+    if (urls.length === 1) return new Promise((_, rej) => o.signal.addEventListener('abort', () => rej(Object.assign(new Error('abort'), { name: 'AbortError' }))));
+    return okFetch();
+  };
+  const b = await boot(cfg({ attemptMs: 150 }), f);
+  const r = await post(b.url, good); const j = await r.json();
+  assert.equal(r.status, 200); assert.match(j.text, /dengerin/); assert.equal(urls.length, 2); b.close();
 });

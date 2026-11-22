@@ -18,8 +18,8 @@ function loadConfig(env = process.env) {
     trustProxy: env.TRUST_PROXY === '1',
     serveWeb: env.SERVE_WEB !== '0',
     geminiKey: env.GEMINI_API_KEY || '',
-    geminiModel: env.GEMINI_MODEL || 'gemini-flash-latest',
-    geminiFallback: env.GEMINI_FALLBACK_MODEL || 'gemini-flash-lite-latest',
+    geminiModel: env.GEMINI_MODEL || 'gemini-flash-lite-latest',
+    geminiFallback: env.GEMINI_FALLBACK_MODEL || 'gemini-flash-latest',
     openaiKey: env.OPENAI_API_KEY || '',
     openaiModel: env.OPENAI_MODEL || 'gpt-4o-mini',
     quiet: false
@@ -73,16 +73,22 @@ async function callGemini(cfg, f, system, msgs, signal) {
   const order = [cfg.geminiModel, cfg.geminiFallback, cfg.geminiModel].filter(Boolean);
   let last;
   for (let i = 0; i < order.length; i++) {
+    if (signal && signal.aborted) throw last || Object.assign(new Error('abort'), { name: 'AbortError' });
+    // tiap percobaan punya batas waktu sendiri, supaya model yang lambat tidak menghabiskan waktu semuanya
+    const ctl = new AbortController();
+    const onAbort = () => ctl.abort();
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+    const to = setTimeout(() => ctl.abort(), cfg.attemptMs || 9000);
     try {
-      const text = await callGeminiModel(cfg, order[i], f, system, msgs, signal);
+      const text = await callGeminiModel(cfg, order[i], f, system, msgs, ctl.signal);
       if (String(text).trim()) return text;
       last = new Error('kosong');
     } catch (e) {
-      if (e.name === 'AbortError' || !RETRYABLE.has(e.httpStatus)) throw e;
-      last = e;
-    }
-    if (i === order.length - 2 && !cfg.quiet) console.warn('Gemini: mencoba model utama lagi');
-    if (i < order.length - 1) await new Promise((r) => setTimeout(r, i === 1 ? 700 : 0));
+      if (signal && signal.aborted) throw e;
+      if (e.name !== 'AbortError' && !RETRYABLE.has(e.httpStatus)) throw e;
+      last = e.name === 'AbortError' ? Object.assign(new Error('timeout'), { httpStatus: 0, reason: 'timeout' }) : e;
+    } finally { clearTimeout(to); if (signal) signal.removeEventListener('abort', onAbort); }
+    if (i < order.length - 1) await new Promise((r) => setTimeout(r, i === 1 ? 500 : 0));
   }
   throw last;
 }
@@ -193,7 +199,7 @@ function createServer(cfg, deps = {}) {
       const crisis = TC.detectCrisis(v.messages[v.messages.length - 1].text);
       const system = TC.buildSystemPrompt(v.persona, { nick: v.nick, crisis });
       const ctl = new AbortController();
-      const to = setTimeout(() => ctl.abort(), 20000);
+      const to = setTimeout(() => ctl.abort(), 26000);
       try {
         const call = cfg.provider === 'openai' ? callOpenAI : callGemini;
         const text = String(await call(cfg, f, system, v.messages, ctl.signal)).trim().slice(0, 1500);
