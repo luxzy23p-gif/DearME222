@@ -42,6 +42,7 @@
     <div id="menu" hidden>
       <button id="m-profile">Lihat profil</button>
       <button id="m-topic">Ide obrolan</button>
+      <button id="m-vreq">Minta voice note</button>
       <button id="m-style">Gaya chat dan suara</button>
       <button id="m-fav">Tandai favorit</button>
       <button id="m-clear">Hapus chat ini</button>
@@ -118,9 +119,28 @@
       <p class="hint" id="sheet-for"></p>
       <div id="sheet-chips" class="chips"></div>
       <p class="hint" id="sheet-desc"></p>
+      <h4>Kelembutan suara</h4>
+      <div id="sheet-soft" class="chips"></div>
+      <h4>Kecepatan bicara</h4>
+      <div id="sheet-pace" class="chips"></div>
+      <h4>Pilihan suara</h4>
+      <div id="sheet-voice" class="chips"></div>
       <button id="sheet-try">Dengarkan contoh suara</button>
       <button class="ghost" id="sheet-close">Selesai</button>
     </div>
+  </div>
+</div>
+
+<div id="rsheet" hidden>
+  <div class="sheet-bg" id="rsheet-bg"></div>
+  <div class="sheet-box">
+    <h3>Minta voice note</h3>
+    <p class="hint" id="rsheet-for"></p>
+    <div id="rsheet-chips" class="chips"></div>
+    <label for="rsheet-in">Atau tulis sendiri</label>
+    <input id="rsheet-in" maxlength="200" autocomplete="off" placeholder="Contoh: semangatin aku buat ujian besok">
+    <button id="rsheet-go">Kirim permintaan</button>
+    <button class="ghost" id="rsheet-close">Tutup</button>
   </div>
 </div>
 

@@ -97,3 +97,36 @@ test('health?tts=1 melaporkan tiap model tanpa membocorkan kunci', async () => {
   assert.equal(j.tts, 'ok'); assert.equal(j.models.length, 3); assert.equal(JSON.stringify(j).includes('"k"'), false);
   b.close();
 });
+
+test('tone: kelembutan, kecepatan, dan pilihan suara masuk ke permintaan; nilai palsu diabaikan', async () => {
+  const bodies = [];
+  const f = async (u, o) => { bodies.push(JSON.parse(o.body)); return audioFetch(pcm)(); };
+  const b = await boot(cfg(), f);
+  let r = await post(b.url, { ...good, tone: { soft: 3, pace: 0, voice: 'Sulafat' } });
+  assert.equal(r.status, 200);
+  let g = bodies[0].generationConfig.speechConfig.voiceConfig;
+  assert.equal(g.voice, 'Sulafat');
+  assert.match(bodies[0].contents[0].parts[0].speech_metadata.style, /whisper/);
+  assert.match(bodies[0].contents[0].parts[0].speech_metadata.style, /slowly/);
+  // suara cowok tidak boleh dipakai persona cewek, nilai di luar rentang diabaikan
+  r = await post(b.url, { ...good, tone: { soft: 9, pace: 'x', voice: 'Charon' } });
+  g = bodies[1].generationConfig.speechConfig.voiceConfig;
+  assert.equal(g.voice, 'Achernar');
+  assert.ok(!/Deliver it/.test(bodies[1].contents[0].parts[0].speech_metadata.style));
+  // persona cowok bisa memilih suara cowok; netral boleh dua-duanya; tone bukan objek diabaikan
+  await post(b.url, { persona: 'raka', style: 'softspoken', text: 'hai', tone: { voice: 'Algieba' } });
+  assert.equal(bodies[2].generationConfig.speechConfig.voiceConfig.voice, 'Algieba');
+  await post(b.url, { persona: 'sena', text: 'hai', tone: { voice: 'Umbriel' } });
+  assert.equal(bodies[3].generationConfig.speechConfig.voiceConfig.voice, 'Umbriel');
+  await post(b.url, { ...good, tone: 'rusak' });
+  assert.equal(bodies[4].generationConfig.speechConfig.voiceConfig.voice, 'Achernar');
+  b.close();
+  assert.equal(validateTts({ ...good, tone: { soft: 2, pace: 2 } }).soft, 2);
+});
+
+test('suara perempuan "santai" bukan Achird (suara laki-laki)', () => {
+  const v = validateTts({ persona: 'nara', style: 'santai', text: 'hai' });
+  const body = [];
+  const f = async (u, o) => { body.push(JSON.parse(o.body)); return audioFetch(pcm)(); };
+  return boot(cfg(), f).then(async (b) => { await post(b.url, { persona: 'nara', style: 'santai', text: 'hai' }); assert.notEqual(body[0].generationConfig.speechConfig.voiceConfig.voice, 'Achird'); assert.equal(v.gender, 'female'); b.close(); });
+});

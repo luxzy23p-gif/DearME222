@@ -46,7 +46,7 @@ function validate(body) {
   if (topic && (!msgs.length || msgs[msgs.length - 1].role !== 'user')) msgs.push({ role: 'user', text: '(aku bingung mau ngomong apa, bantu cari topik ya)' });
   if (!msgs.length || msgs[msgs.length - 1].role !== 'user') return { error: 'Pesan terakhir harus dari pengguna.' };
   const style = typeof body.style === 'string' && Object.prototype.hasOwnProperty.call(TC.STYLES, body.style) ? body.style : '';
-  return { persona: body.persona, nick, style, topic, messages: msgs };
+  return { persona: body.persona, nick, style, topic, voice: body.voice === true, messages: msgs };
 }
 
 function upstreamError(status, body) {
@@ -116,7 +116,7 @@ async function callOpenAI(cfg, f, system, msgs, signal) {
 // ---------- suara (Gemini TTS) ----------
 // Suara per jenis suara persona dan gaya chat. Nama suara bawaan Gemini; keterangan gaya dibaca model sebagai arahan nada.
 const TTS_VOICES = {
-  female: { lembut: 'Achernar', softspoken: 'Vindemiatrix', ceria: 'Zephyr', tenang: 'Sulafat', santai: 'Achird' },
+  female: { lembut: 'Achernar', softspoken: 'Vindemiatrix', ceria: 'Zephyr', tenang: 'Sulafat', santai: 'Callirrhoe' },
   male: { lembut: 'Umbriel', softspoken: 'Umbriel', ceria: 'Puck', tenang: 'Charon', santai: 'Iapetus' }
 };
 const TTS_STYLE = {
@@ -126,6 +126,8 @@ const TTS_STYLE = {
   tenang: 'calm, clear, soothing and unhurried',
   santai: 'relaxed, casual, friendly, natural conversational pace'
 };
+const TTS_SOFT = ['', 'softly and gently', 'very softly, warmly and gently, as if quietly talking to a close friend', 'in a soft whisper, very quiet and calm'];
+const TTS_PACE = ['slowly with natural pauses', 'at a natural pace', 'at a lively but still gentle pace'];
 const TTS_MAX_CHARS = 600;
 
 function wavFromPcm(pcm, rate = 24000) {
@@ -144,18 +146,26 @@ function validateTts(body) {
   if (!text) return { error: 'Teks kosong.' };
   const style = typeof body.style === 'string' && Object.prototype.hasOwnProperty.call(TC.STYLES, body.style) ? body.style : TC.DEFAULT_STYLE[body.persona] || 'tenang';
   const gender = TC.PERSONAS[body.persona].voice === 'male' ? 'male' : 'female';
-  return { persona: body.persona, text, style, gender };
+  // pengaturan kenyamanan dari pengguna: kelembutan 0-3, kecepatan 0-2, suara dari daftar yang diizinkan
+  const t = body.tone && typeof body.tone === 'object' && !Array.isArray(body.tone) ? body.tone : {};
+  const soft = Number.isInteger(t.soft) && t.soft >= 0 && t.soft <= 3 ? t.soft : -1;
+  const pace = Number.isInteger(t.pace) && t.pace >= 0 && t.pace <= 2 ? t.pace : -1;
+  const voice = typeof t.voice === 'string' && TC.voicesFor(body.persona).some((x) => x.id === t.voice) ? t.voice : '';
+  return { persona: body.persona, text, style, gender, soft, pace, voice };
 }
 
 // Dua bentuk permintaan: model 3.x memakai voiceConfig.voice + speech_metadata.style,
 // model 2.5 memakai prebuiltVoiceConfig.voiceName + arahan di awal teks.
 function ttsRequest(model, v) {
-  const voice = TTS_VOICES[v.gender][v.style];
-  const style = TTS_STYLE[v.style];
+  const voice = v.voice || TTS_VOICES[v.gender][v.style];
+  let style = TTS_STYLE[v.style];
+  const extra = [v.soft >= 0 ? TTS_SOFT[v.soft] : '', v.pace >= 0 ? TTS_PACE[v.pace] : ''].filter(Boolean);
+  const fullStyle = extra.length ? style + '. Deliver it ' + extra.join(', ') : style;
+  const sayStyle = extra.length ? style + ', ' + extra.join(', ') : style;
   if (/^gemini-3/.test(model)) {
-    return { contents: [{ role: 'user', parts: [{ text: v.text, speech_metadata: { style } }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { voice } } } };
+    return { contents: [{ role: 'user', parts: [{ text: v.text, speech_metadata: { style: fullStyle } }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { voice } } } };
   }
-  return { contents: [{ role: 'user', parts: [{ text: `Say in a ${style}: ${v.text}` }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } } };
+  return { contents: [{ role: 'user', parts: [{ text: `Say in a ${sayStyle}: ${v.text}` }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } } };
 }
 
 async function callGeminiTts(cfg, model, f, v, signal) {
@@ -306,7 +316,7 @@ function createServer(cfg, deps = {}) {
       // pesan pengganti mode topik tidak dihitung; tanda krisis di pesan asli pengguna tetap diperiksa dan membatalkan mode topik
       const real = v.messages.slice().reverse().find((m) => m.role === 'user' && !/^\(aku bingung mau ngomong apa/.test(m.text));
       const crisis = real ? TC.detectCrisis(real.text) : false;
-      const system = TC.buildSystemPrompt(v.persona, { nick: v.nick, crisis, style: v.style, topic: v.topic && !crisis });
+      const system = TC.buildSystemPrompt(v.persona, { nick: v.nick, crisis, style: v.style, topic: v.topic && !crisis, voice: v.voice && !crisis });
       const ctl = new AbortController();
       const to = setTimeout(() => ctl.abort(), 26000);
       try {

@@ -185,3 +185,19 @@ test('mode topik: boleh tanpa/akhir pesan AI, ditambah pesan pengganti; prompt m
   assert.match(sent.systemInstruction.parts[0].text, /PERHATIAN: pesan terakhir pengguna mengandung tanda krisis/);
   b.close();
 });
+
+test('mode voice note: arahan PESAN SUARA masuk prompt, hanya bila diminta dan bukan krisis', async () => {
+  let sent;
+  const f = async (u, o) => { sent = JSON.parse(o.body); return okFetch(); };
+  const b = await boot(cfg(), f);
+  await post(b.url, { ...good, voice: true });
+  assert.match(sent.systemInstruction.parts[0].text, /PESAN SUARA/);
+  assert.match(sent.systemInstruction.parts[0].text, /tanpa kata sayang romantis/);
+  await post(b.url, good);
+  assert.ok(!/PESAN SUARA/.test(sent.systemInstruction.parts[0].text));
+  await post(b.url, { ...good, voice: 'ya', messages: [{ role: 'user', text: 'x' }] });
+  assert.ok(!/PESAN SUARA/.test(sent.systemInstruction.parts[0].text));
+  await post(b.url, { ...good, voice: true, messages: [{ role: 'user', text: 'aku pengen mati, kirim voice note' }] });
+  assert.ok(!/PESAN SUARA/.test(sent.systemInstruction.parts[0].text));
+  b.close();
+});

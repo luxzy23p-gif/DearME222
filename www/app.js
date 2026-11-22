@@ -24,7 +24,12 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 const hm = (t) => new Date(t).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
 /* ---------- data ---------- */
-function freshChat(id) { return { msgs: [], style: TC.DEFAULT_STYLE[id], voice: false, fav: false, unread: 0 }; }
+function freshVset() { return { soft: -1, pace: -1, voice: '' }; }
+function cleanVset(v, id) {
+  v = v && typeof v === 'object' ? v : {};
+  return { soft: Number.isInteger(v.soft) && v.soft >= 0 && v.soft <= 3 ? v.soft : -1, pace: Number.isInteger(v.pace) && v.pace >= 0 && v.pace <= 2 ? v.pace : -1, voice: typeof v.voice === 'string' && TC.voicesFor(id).some((x) => x.id === v.voice) ? v.voice : '' };
+}
+function freshChat(id) { return { msgs: [], style: TC.DEFAULT_STYLE[id], voice: false, fav: false, unread: 0, vset: freshVset() }; }
 function fresh() {
   const chats = {}; IDS.forEach((id) => { chats[id] = freshChat(id); });
   return { v: 2, nick: '', gender: '', theme: 'sage', onboarded: false, chats };
@@ -43,7 +48,7 @@ function load() {
     out.onboarded = !!s.onboarded;
     IDS.forEach((id) => {
       const c = s.chats && s.chats[id];
-      if (c && typeof c === 'object') out.chats[id] = { msgs: cleanMsgs(c.msgs), style: has(TC.STYLES, c.style) ? c.style : TC.DEFAULT_STYLE[id], voice: !!c.voice, fav: !!c.fav, unread: Math.max(0, Number(c.unread) || 0) | 0 };
+      if (c && typeof c === 'object') out.chats[id] = { msgs: cleanMsgs(c.msgs), style: has(TC.STYLES, c.style) ? c.style : TC.DEFAULT_STYLE[id], voice: !!c.voice, fav: !!c.fav, unread: Math.max(0, Number(c.unread) || 0) | 0, vset: cleanVset(c.vset, id) };
     });
   } else {
     const old = store.get('tc1', null); // versi lama: hanya satu chat
@@ -96,7 +101,7 @@ function showView(v) {
   if (v === 'set') renderSettings();
 }
 document.querySelectorAll('#nav button').forEach((b) => { b.onclick = () => { closePops(); showView(b.dataset.v); }; });
-function closePops() { $('#menu').hidden = true; $('#emo').hidden = true; $('#sheet').hidden = true; }
+function closePops() { $('#menu').hidden = true; $('#emo').hidden = true; $('#sheet').hidden = true; $('#rsheet').hidden = true; }
 
 /* ---------- daftar chat ---------- */
 let tab = 'all', query = '';
@@ -149,6 +154,15 @@ function stopSpeak() {
 }
 function cleanForSpeech(text) { return text.replace(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/gu, '').trim(); }
 
+// Pengaturan kenyamanan suara per chat (hanya yang diubah pengguna yang dikirim; sisanya mengikuti gaya chat)
+function toneOf(id) {
+  const v = chat(id).vset || freshVset(), t = {};
+  if (v.soft >= 0) t.soft = v.soft;
+  if (v.pace >= 0) t.pace = v.pace;
+  if (v.voice) t.voice = v.voice;
+  return t;
+}
+
 // Suara bawaan HP (cadangan kalau suara AI gagal atau tidak ada koneksi)
 function speakDevice(text, id, onend) {
   if (!('speechSynthesis' in window)) { if (onend) onend(); return; }
@@ -162,7 +176,9 @@ function speakDevice(text, id, onend) {
   const v = g === 'male' ? vs.find((x) => /male/i.test(x.name) && !/female/i.test(x.name)) : g === 'female' ? vs.find((x) => /female|gadis|damayanti/i.test(x.name)) : null;
   if (v || vs[0]) u.voice = v || vs[0];
   const adj = g === 'male' ? 0.9 : 1; // suara cowok sedikit lebih rendah
-  u.pitch = Math.max(0, Math.min(2, tts.pitch * adj)); u.rate = tts.rate; u.volume = tts.volume;
+  const tn = toneOf(id);
+  const softK = tn.soft === undefined ? 1 : [1.1, 1, 0.85, 0.6][tn.soft], paceK = tn.pace === undefined ? 1 : [0.85, 1, 1.2][tn.pace];
+  u.pitch = Math.max(0, Math.min(2, tts.pitch * adj)); u.rate = Math.max(0.5, Math.min(1.6, tts.rate * paceK * (tn.soft === 3 ? 0.9 : 1))); u.volume = Math.max(0.2, Math.min(1, tts.volume * softK));
   u.onend = u.onerror = () => { if (onend) onend(); };
   speechSynthesis.speak(u);
 }
@@ -173,7 +189,7 @@ async function speak(text, id, onend, row) {
   const clean = cleanForSpeech(text);
   if (!clean) { if (onend) onend(); return; }
   const style = chat(id).style || '';
-  const key = id + '|' + style + '|' + clean;
+  const key = id + '|' + style + '|' + JSON.stringify(toneOf(id)) + '|' + clean;
   const token = ++playToken;
   let finished = false;
   const done = () => { if (finished) return; finished = true; if (onend) onend(); };
@@ -186,7 +202,7 @@ async function speak(text, id, onend, row) {
       const to = setTimeout(() => { if (ttsCtl) ttsCtl.abort(); }, 28000);
       let r;
       try {
-        r = await fetch(TTS_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ persona: id, style, text: clean.slice(0, 600) }), signal: ttsCtl.signal });
+        r = await fetch(TTS_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ persona: id, style, text: clean.slice(0, 600), tone: toneOf(id) }), signal: ttsCtl.signal });
       } finally { clearTimeout(to); }
       if (!r.ok) throw new Error('tts ' + r.status);
       blob = await r.blob();
@@ -253,7 +269,7 @@ function addBubble(m, id, read) {
   let d;
   if (m.role === 'notice') {
     d = el('div', 'notice'); TC.CRISIS_NOTICE.forEach((t) => d.append(el('p', '', t)));
-  } else if (m.role === 'ai' && chat(id).voice) {
+  } else if (m.role === 'ai' && (chat(id).voice || m.vn)) {
     d = vnBubble(m, id);
   } else {
     d = el('div', 'b ' + (m.role === 'user' ? 'me' : 'ai'));
@@ -328,13 +344,13 @@ function maybeReply() {
   if (userTyping() && Date.now() - waitStart < WAIT_MAX) { setStatus('hold'); waitT = setTimeout(maybeReply, 900); return; }
   doReply();
 }
-async function askAI(id, ctl, topic) {
+async function askAI(id, ctl, topic, asVoice) {
   const c = chat(id);
   const hist = c.msgs.filter((m) => m.role === 'user' || m.role === 'ai').slice(-20).map((m) => ({ role: m.role, text: m.text }));
   if (!navigator.onLine) throw new Error('offline');
   const to = setTimeout(() => ctl.abort(), 30000);
   try {
-    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(topic ? { persona: id, style: c.style, nick: S.nick, messages: hist, topic: true } : { persona: id, style: c.style, nick: S.nick, messages: hist }), signal: ctl.signal });
+    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ persona: id, style: c.style, nick: S.nick, messages: hist, ...(topic ? { topic: true } : {}), ...(asVoice ? { voice: true } : {}) }), signal: ctl.signal });
     const j = await r.json().catch(() => ({}));
     if (r.status === 429) throw new Error('rate');
     if (!r.ok || typeof j.text !== 'string') throw new Error('server');
@@ -357,15 +373,16 @@ async function doReply(topic) {
   const my = token, c = chat(id);
   const lastUser = c.msgs.slice().reverse().find((m) => m.role === 'user');
   const crisis = lastUser && !curTopic ? TC.detectCrisis(lastUser.text) : false;
+  const asVoice = !curTopic && !crisis && !!lastUser && (c.voice || VOICE_CMD.test(lastUser.text));
   const here = () => S.cur === id && view === 'chat';
   const ctl = new AbortController(); inflight = ctl;
   setStatus('think'); if (here()) typEl = showTyping();
   try {
-    const raw = await askAI(id, ctl, curTopic);
+    const raw = await askAI(id, ctl, curTopic, asVoice);
     if (my !== token) return;
     inflight = null; if (typEl) { typEl.remove(); typEl = null; }
     let parts = String(raw).split('|||').map((s) => s.trim()).filter(Boolean).slice(0, 3);
-    if (c.voice && parts.length > 1) parts = [parts.join(' ')]; // mode voice note: satu rekaman utuh, bukan saling memotong
+    if (asVoice && parts.length > 1) parts = [parts.join(' ')]; // mode voice note: satu rekaman utuh, bukan saling memotong
     if (!parts.length) throw new Error('server');
     for (let i = 0; i < parts.length; i++) {
       if (i > 0) {
@@ -374,9 +391,9 @@ async function doReply(topic) {
         if (my !== token) return;
         if (typEl) { typEl.remove(); typEl = null; }
       }
-      const am = { role: 'ai', text: parts[i], t: Date.now() };
+      const am = { role: 'ai', text: parts[i], t: Date.now(), vn: asVoice };
       c.msgs.push(am);
-      if (here()) { addBubble(am, id); markRead(); if (c.voice) { const row = log.lastChild && log.lastChild.vnRow; if (row) { stopSpeak(); playing = row; row.classList.add('playing'); speak(am.text, id, () => { if (playing === row) { row.classList.remove('playing', 'loading'); playing = null; } }, row); } } }
+      if (here()) { addBubble(am, id); markRead(); if (asVoice) { const row = log.lastChild && log.lastChild.vnRow; if (row) { stopSpeak(); playing = row; row.classList.add('playing'); speak(am.text, id, () => { if (playing === row) { row.classList.remove('playing', 'loading'); playing = null; } }, row); } } }
       else c.unread++;
       save();
     }
@@ -428,14 +445,29 @@ function styleChips(box, id, after) {
     box.append(b);
   });
 }
+function tuneChips(box, opts, cur, onPick) {
+  box.innerHTML = '';
+  [{ id: -1, label: 'Otomatis' }].concat(opts).forEach((o) => {
+    const b = el('button', 'chip' + (cur === o.id ? ' on' : ''), o.label); b.onclick = () => onPick(o.id); box.append(b);
+  });
+}
 function renderSheet() {
   const id = S.cur, st = TC.styleOf(id, chat(id).style);
   $('#sheet-for').textContent = 'Untuk chat dengan ' + TC.PERSONAS[id].name + '. Mengubah cara AI menulis dan suara voice note.';
   styleChips($('#sheet-chips'), id, renderSheet);
   $('#sheet-desc').textContent = st.label + ': ' + st.desc;
+  const v = chat(id).vset;
+  tuneChips($('#sheet-soft'), TC.SOFT_LEVELS, v.soft, (x) => { v.soft = x; save(); renderSheet(); });
+  tuneChips($('#sheet-pace'), TC.PACE_LEVELS, v.pace, (x) => { v.pace = x; save(); renderSheet(); });
+  const vb = $('#sheet-voice'); vb.innerHTML = '';
+  const g = TC.PERSONAS[id].voice === 'neutral';
+  const mk = (val, label) => { const b = el('button', 'chip' + (v.voice === val ? ' on' : ''), label); b.onclick = () => { v.voice = val; save(); renderSheet(); }; vb.append(b); };
+  mk('', 'Otomatis');
+  TC.voicesFor(id).forEach((o) => mk(o.id, (g ? (TC.VOICES.male.some((m) => m.id === o.id) ? 'Cowok · ' : 'Cewek · ') : '') + o.label));
 }
 $('#m-style').onclick = () => { $('#menu').hidden = true; renderSheet(); $('#sheet').hidden = false; };
 $('#sheet-close').onclick = $('#sheet-bg').onclick = () => { stopSpeak(); $('#sheet').hidden = true; };
+$('#rsheet-close').onclick = $('#rsheet-bg').onclick = () => { $('#rsheet').hidden = true; };
 $('#sheet-try').onclick = () => { stopSpeak(); speak(TC.styleOf(S.cur, chat(S.cur).style).sample, S.cur); };
 
 /* ---------- emoji ---------- */
@@ -495,6 +527,33 @@ if (!SR) { $('#mic').hidden = true; } else {
   window.cancelRecording = () => { if (rec) { cancelRec(); return true; } return false; };
 }
 
+/* ---------- minta voice note di berbagai situasi ---------- */
+const VOICE_CMD = /(voice\s?note|\bvn\b|\bvoice\b|pesan suara|ucapin|ucapkan|bisikin|bisikkan|rekam(in|kan)? suara|bacain|bacakan|suaramu|dengerin suara)/i;
+const VOICE_PRESETS = [
+  ['Selamat pagi', 'Tolong kirim voice note ucapin selamat pagi dan semangatin aku buat hari ini'],
+  ['Selamat tidur', 'Tolong kirim voice note ucapin selamat tidur, yang lembut aja biar aku gampang tidur'],
+  ['Semangatin aku', 'Kirim voice note buat nyemangatin aku dong'],
+  ['Tenangin aku', 'Kirim voice note buat nenangin aku, aku lagi cemas'],
+  ['Ingetin makan dan istirahat', 'Kirim voice note ngingetin aku buat makan dan istirahat'],
+  ['Bangga sama usahaku', 'Kirim voice note yang bilang kamu bangga sama usahaku hari ini'],
+  ['Hibur aku', 'Kirim voice note buat ngehibur aku, aku lagi sedih'],
+  ['Ucapan terima kasih', 'Kirim voice note ucapan terima kasih yang hangat'],
+  ['Selamat ulang tahun', 'Kirim voice note ucapan selamat ulang tahun buat aku'],
+  ['Bisikin biar rileks', 'Bisikin aku pelan-pelan biar rileks dan gampang tidur'],
+  ['Semangat kerja atau kuliah', 'Kirim voice note semangat buat kerjaan atau kuliahku hari ini']
+];
+function openVreq() {
+  const id = S.cur; if (!id) return;
+  $('#menu').hidden = true;
+  $('#rsheet-for').textContent = 'Pilih situasinya, ' + TC.PERSONAS[id].name + ' akan membalas lewat voice note. Kamu juga bisa mengetik "kirim voice note ..." kapan saja.';
+  const box = $('#rsheet-chips'); box.innerHTML = '';
+  VOICE_PRESETS.forEach(([label, cmd]) => { const b = el('button', 'chip', label); b.onclick = () => { $('#rsheet').hidden = true; send(cmd); }; box.append(b); });
+  $('#rsheet-in').value = ''; $('#rsheet').hidden = false;
+}
+$('#m-vreq').onclick = openVreq;
+$('#rsheet-go').onclick = () => { const t = $('#rsheet-in').value.trim(); if (!t) { $('#rsheet-in').focus(); return; } $('#rsheet').hidden = true; send('Kirim voice note: ' + t); };
+$('#rsheet-in').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#rsheet-go').click(); });
+
 /* ---------- ide obrolan: AI mencari topik kalau kamu bingung ---------- */
 function startTopic(id) {
   if (!id || S.cur !== id || view !== 'chat') return;
@@ -509,6 +568,7 @@ function renderIdeas() {
   box.hidden = !fresh0;
   if (!fresh0) return;
   const t = el('button', 'idea main', '💡 Cariin topik'); t.onclick = () => startTopic(S.cur); box.append(t);
+  const vq = el('button', 'idea', '🎙️ Minta voice note'); vq.onclick = openVreq; box.append(vq);
   const day = Math.floor(Date.now() / 86400000);
   const list = TC.STARTERS;
   for (let i = 0; i < 3; i++) { const txt = list[(day + i) % list.length]; const b = el('button', 'idea', txt); b.onclick = () => send(txt); box.append(b); }

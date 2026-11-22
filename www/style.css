@@ -154,7 +154,7 @@ input#nick,input#nick2{width:100%;padding:11px 14px;border-radius:12px;border:1p
 .chip.on{border-color:var(--ac);font-weight:800}
 .srow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:12px 0}.srow .chips{flex-basis:100%;margin:0}.srow .chip{padding:7px 13px;font-size:.88rem}
 .danger{width:100%;padding:12px;border-radius:12px;border:1px solid var(--warn);background:none;color:var(--warn);font-weight:800}
-#go,#sheet-try{width:100%;padding:13px;border:0;border-radius:12px;background:var(--ac);color:var(--acink);font-weight:800;margin-top:14px}
+#go,#sheet-try,#rsheet-go{width:100%;padding:13px;border:0;border-radius:12px;background:var(--ac);color:var(--acink);font-weight:800;margin-top:14px}
 .ghost{width:100%;padding:12px;border:0;background:none;color:var(--mut);margin-top:4px}
 
 /* bilah bawah */
@@ -163,7 +163,7 @@ input#nick,input#nick2{width:100%;padding:11px 14px;border-radius:12px;border:1p
 #nav button.on{color:var(--navon);background:rgba(255,255,255,.16)}
 
 /* lembar pilihan gaya */
-#sheet{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end}
+#sheet,#rsheet{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end}
 .sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.5)}
 .sheet-box{position:relative;width:100%;max-width:720px;margin:0 auto;background:var(--bg);background-image:var(--bg2);border-radius:24px 24px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));border:1px solid var(--bd)}
 .sheet-box h3{margin:0 0 4px}
@@ -209,3 +209,9 @@ input[type=range]{width:100%;accent-color:var(--ac)}
 .irow span{color:var(--mut);flex:none}.irow b{text-align:right;font-weight:600}
 .pacts{display:flex;flex-direction:column;gap:8px;margin:12px 0}
 .pacts .pri{flex:none}
+
+.sheet-box{max-height:88vh;overflow-y:auto}
+.sheet-box h4{margin:12px 0 2px;font-size:.88rem}
+.sheet-box .chips{margin:4px 0 6px}
+.sheet-box .chip{padding:7px 13px;font-size:.85rem}
+#rsheet-in{width:100%;padding:11px 14px;border-radius:12px;border:1px solid var(--bd);background:var(--card)}
